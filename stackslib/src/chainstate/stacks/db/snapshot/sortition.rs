@@ -305,10 +305,10 @@ fn copy_sortition_tables_inner(
     }
 
     session_conn
-        .execute_batch("DROP TABLE IF EXISTS canonical_sortitions")
+        .execute_batch("DROP TABLE IF EXISTS temp.canonical_sortitions")
         .map_err(Error::SQLError)?;
     session_conn
-        .execute_batch("DROP TABLE IF EXISTS canonical_burn_hashes")
+        .execute_batch("DROP TABLE IF EXISTS temp.canonical_burn_hashes")
         .map_err(Error::SQLError)?;
 
     Ok(SortitionSideTableStats {
