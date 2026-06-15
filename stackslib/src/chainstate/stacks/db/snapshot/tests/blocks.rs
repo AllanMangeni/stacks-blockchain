@@ -28,7 +28,9 @@ use super::{
     create_dest_db_with_canonical_blocks, create_source_db, insert_epoch2_block_header_with_ibh,
     insert_nakamoto_header,
 };
-use crate::chainstate::nakamoto::staging_blocks::test_insert_nakamoto_staging_block_row;
+use crate::chainstate::nakamoto::staging_blocks::{
+    test_insert_nakamoto_staging_block_row, NAKAMOTO_STAGING_DB_SCHEMA_LATEST,
+};
 use crate::chainstate::stacks::db::StacksChainState;
 use crate::chainstate::stacks::index::Error;
 use crate::chainstate::stacks::{
@@ -767,7 +769,11 @@ fn test_nakamoto_copy() {
     let dst_ver: i64 = dst_conn
         .query_row("SELECT MAX(version) FROM db_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(dst_ver, 5, "db_version should be 5 (latest migration)");
+    assert_eq!(
+        dst_ver,
+        i64::from(NAKAMOTO_STAGING_DB_SCHEMA_LATEST),
+        "db_version should be the latest migration"
+    );
     drop(dst_conn);
 }
 
