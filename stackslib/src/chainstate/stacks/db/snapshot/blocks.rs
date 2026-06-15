@@ -269,22 +269,22 @@ pub fn copy_epoch2_block_files(
         )
         .map_err(Error::SQLError)?;
 
-    let rows: Vec<(StacksBlockId, u64)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-        .map_err(Error::SQLError)?
-        .collect::<Result<Vec<_>, _>>()
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, StacksBlockId>(0)?, row.get::<_, u64>(1)?))
+        })
         .map_err(Error::SQLError)?;
-    drop(stmt);
 
     let mut stats = Epoch2BlockFileCopyStats::default();
 
-    for (index_block_hash, block_height) in &rows {
-        if *block_height == 0 {
+    for row in rows {
+        let (index_block_hash, block_height) = row.map_err(Error::SQLError)?;
+        if block_height == 0 {
             stats.genesis_skipped += 1;
             continue;
         }
 
-        let rel_path = index_block_hash_to_rel_path(index_block_hash);
+        let rel_path = index_block_hash_to_rel_path(&index_block_hash);
         let src_path = Path::new(src_blocks_dir).join(&rel_path);
         let dst_path = Path::new(dst_blocks_dir).join(&rel_path);
 
