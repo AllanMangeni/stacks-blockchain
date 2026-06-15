@@ -1009,6 +1009,15 @@ impl NakamotoBlockHeader {
             pox_treatment: BitVec::zeros(1).expect("BUG: bitvec of length-1 failed to construct"),
         }
     }
+
+    /// The Nakamoto block header version required for blocks in `epoch_id`.
+    ///
+    /// The header format (and therefore the version number, ignoring the
+    /// shadow-block high bit) is fixed per epoch. Used to reject blocks whose
+    /// version does not match their epoch.
+    pub fn expected_version_for_epoch(_epoch_id: StacksEpochId) -> u8 {
+        NAKAMOTO_BLOCK_VERSION
+    }
 }
 
 impl NakamotoBlock {
@@ -1734,6 +1743,21 @@ impl NakamotoBlock {
                 "stacks_block_hash" => %self.header.block_hash(),
                 "stacks_block_id" => %self.header.block_id(),
                 "epoch_id" => %epoch_id
+            );
+            return false;
+        }
+        // The header version is fixed per epoch and is what gates the
+        // `problematic_txs` field in the block hash. Reject any block whose
+        // version doesn't match its epoch (ignoring the shadow-block high bit).
+        let expected_version = NakamotoBlockHeader::expected_version_for_epoch(epoch_id);
+        if self.header.version & 0x7f != expected_version {
+            warn!("Block has invalid header version for epoch";
+                "consensus_hash" => %self.header.consensus_hash,
+                "stacks_block_hash" => %self.header.block_hash(),
+                "stacks_block_id" => %self.header.block_id(),
+                "epoch_id" => %epoch_id,
+                "version" => self.header.version,
+                "expected_version" => expected_version
             );
             return false;
         }
