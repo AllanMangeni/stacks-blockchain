@@ -2719,10 +2719,10 @@ impl SortitionDB {
     /// * `marf_opts` - Configuration options for opening the MARF.
     ///
     /// # Behavior
-    /// Given a `marf_path` such as `burnchain/sortition/marf.sqlite`,
-    /// the MARF blobs are stored internally unless `marf.sqlite.blobs` exists.
-    /// The `external_blobs` value in `marf_opts` is ignored: blob layout is a
-    /// property of the on-disk database, which the caller may not know.
+    /// The blob layout is detected from disk (external iff `marf.sqlite.blobs`
+    /// exists), not from `marf_opts.external_blobs`, which is ignored.
+    /// Creating a new DB via this function always forces internal blobs,
+    /// since the blobs file cannot exist yet.
     /// This function also enables SQLite foreign key enforcement.
     fn open_index(
         marf_path: &str,
