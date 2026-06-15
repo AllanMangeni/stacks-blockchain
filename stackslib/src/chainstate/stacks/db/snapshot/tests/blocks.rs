@@ -40,10 +40,7 @@ use crate::chainstate::stacks::{
 use crate::core::EMPTY_MICROBLOCK_PARENT_HASH;
 
 /// Create a squashed index DB whose `block_headers` rows are the given
-/// `(index_block_hash, block_height)` pairs. Goes through the production
-/// initializer ([`create_source_db`]), so the file is WAL: the epoch2
-/// block-file copy re-opens it with a read-only `sqlite_open`, whose WAL
-/// pragma rejects non-WAL files.
+/// `(index_block_hash, block_height)` pairs.
 fn create_block_headers_index(path: &std::path::Path, rows: &[(&str, u32)]) {
     let conn = create_source_db(path);
     for (i, (ibh, height)) in rows.iter().enumerate() {
