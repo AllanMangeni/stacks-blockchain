@@ -25,7 +25,7 @@ use super::common::{
 use crate::burnchains::bitcoin::spv::num_complete_chain_work_intervals;
 use crate::chainstate::stacks::index::Error;
 
-/// Tables required in all headers.sqlite versions.
+/// Tables required for the current headers.sqlite schema.
 pub(super) const REQUIRED_TABLES: &[&str] = &["headers", "db_config", "chain_work"];
 
 /// Row-count statistics returned by [`copy_spv_headers`].
