@@ -215,3 +215,28 @@ fn test_spv_headers_missing_source_is_error(#[case] stale_destination: bool) {
         "missing source must not be created by ATTACH"
     );
 }
+
+/// The copy writes into a NEW destination only: a pre-existing
+/// destination file (e.g. left over from a prior squash run) is an
+/// error, never appended to or overwritten.
+#[test]
+fn test_spv_headers_existing_destination_is_error() {
+    let dir = tempdir().unwrap();
+    let src_path = dir.path().join("src.sqlite");
+    let dst_path = dir.path().join("dst.sqlite");
+
+    create_spv_headers_db(&src_path);
+    std::fs::write(&dst_path, b"stale data").unwrap();
+
+    let result = super::super::spv::copy_spv_headers(
+        src_path.to_str().unwrap(),
+        dst_path.to_str().unwrap(),
+        100,
+    );
+    assert!(result.is_err(), "existing destination should error");
+    assert_eq!(
+        std::fs::read(&dst_path).unwrap(),
+        b"stale data",
+        "existing destination must be left untouched"
+    );
+}

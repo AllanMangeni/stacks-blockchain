@@ -37,7 +37,8 @@ pub struct SpvHeadersCopyStats {
 
 /// Copy canonical SPV headers up to `burn_height` into a new destination.
 ///
-/// Returns an error if the source file does not exist.
+/// Returns an error if the source file does not exist, or if the
+/// destination already exists.
 pub fn copy_spv_headers(
     src_path: &str,
     dst_path: &str,
@@ -47,6 +48,12 @@ pub fn copy_spv_headers(
         return Err(Error::IOError(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("SPV headers source not found: {src_path}"),
+        )));
+    }
+    if Path::new(dst_path).exists() {
+        return Err(Error::IOError(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!("SPV headers destination already exists: {dst_path}"),
         )));
     }
 
