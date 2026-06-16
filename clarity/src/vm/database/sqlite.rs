@@ -220,21 +220,6 @@ impl SqliteConnection {
         Ok(())
     }
 
-    /// Visit every `data_table` row on `conn` as `(key, value)`.
-    pub fn visit_data_rows<F>(conn: &Connection, mut visit: F) -> Result<(), rusqlite::Error>
-    where
-        F: FnMut(&str, &str) -> Result<(), rusqlite::Error>,
-    {
-        let mut stmt = conn.prepare("SELECT key, value FROM data_table")?;
-        let mut rows = stmt.query(NO_PARAMS)?;
-        while let Some(row) = rows.next()? {
-            let key: String = row.get(0)?;
-            let value: String = row.get(1)?;
-            visit(&key, &value)?;
-        }
-        Ok(())
-    }
-
     /// Number of rows in `data_table`.
     pub fn count_data_rows(conn: &Connection) -> Result<u64, rusqlite::Error> {
         conn.query_row("SELECT COUNT(*) FROM data_table", NO_PARAMS, |row| {

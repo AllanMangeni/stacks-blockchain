@@ -221,14 +221,14 @@ fn test_squashed_clarity_marf_data_reads_work() {
     // Stale overwritten values are pruned from the content-addressed
     // data_table: only the tip value of clarity_key_1 survives.
     let conn = rusqlite::Connection::open(&squashed_db).unwrap();
-    let mut stale = 0;
-    SqliteConnection::visit_data_rows(&conn, |_key, value| {
-        if value.starts_with("clarity_val_1") && value != "clarity_val_1_at_3" {
-            stale += 1;
-        }
-        Ok(())
-    })
-    .unwrap();
+    let stale: u64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM data_table \
+             WHERE value LIKE 'clarity_val_1%' AND value != 'clarity_val_1_at_3'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
     assert_eq!(stale, 0, "overwritten values must be pruned");
 }
 
