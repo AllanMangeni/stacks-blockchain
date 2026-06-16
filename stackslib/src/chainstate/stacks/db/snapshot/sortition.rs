@@ -260,6 +260,10 @@ pub fn copy_sortition_side_tables(
     copy_sortition_side_tables_with_boundary(src_path, dst_path, None)
 }
 
+/// [`copy_sortition_side_tables`] with an explicit Stacks-tip boundary: the
+/// `stacks_chain_tips*` memo rows are rewritten/dropped relative to
+/// `stacks_boundary` (see [`SortitionTipCopyBoundary`]).
+/// A `None` boundary copies all the memo rows.
 pub fn copy_sortition_side_tables_with_boundary(
     src_path: &str,
     dst_path: &str,
