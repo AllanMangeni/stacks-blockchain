@@ -121,10 +121,10 @@ fn open_readonly_marf(db_path: &str) -> Result<MARF<StacksBlockId>, Error> {
     Ok(MARF::from_storage(storage))
 }
 
-/// Stream the source `metadata_table` into the destination, keeping only
-/// rows whose contract id is in `required`. Rows whose key is not in the
-/// [`SqliteConnection`] metadata format are skipped.
-/// Returns `(scanned, copied)` row counts.
+/// Stream the source `metadata_table` into the destination, keeping only rows
+/// whose contract id is in `required`. Every key must be in the `clr-meta::`
+/// format (the only format any writer produces); a key that doesn't parse is
+/// treated as corruption. Returns `(scanned, copied)` row counts.
 fn copy_required_metadata_rows(
     src_conn: &Connection,
     dst_conn: &Connection,
@@ -132,31 +132,38 @@ fn copy_required_metadata_rows(
 ) -> Result<(u64, u64), Error> {
     let mut scanned: u64 = 0;
     let mut copied: u64 = 0;
-    SqliteConnection::visit_metadata_rows(src_conn, |key, blockhash, value| {
+    SqliteConnection::visit_metadata_rows(src_conn, |row| {
         scanned += 1;
-        let Some((contract_id, _meta_key)) = SqliteConnection::parse_metadata_key(key) else {
-            return Ok(());
+        let Some((contract_id, _meta_key)) = SqliteConnection::parse_metadata_key(row.key) else {
+            return Err(Error::CorruptionError(format!(
+                "metadata_table key is not in clr-meta:: format: {}",
+                row.key
+            )));
         };
         if !required.contains(contract_id) {
             return Ok(());
         }
-        SqliteConnection::insert_metadata_row(dst_conn, key, blockhash, value)?;
+        SqliteConnection::insert_metadata_row(dst_conn, row)?;
         copied += 1;
         Ok(())
     })?;
     Ok((scanned, copied))
 }
 
-/// The distinct contract ids appearing in `metadata_table` keys on `conn`.
-/// Scanned in key order so the result is deterministic across runs.
+/// The distinct contract ids appearing in `metadata_table` keys on `conn`,
+/// in the visitor's ascending key order. Every key must be in the
+/// `clr-meta::` format; a key that doesn't parse is corruption.
 fn scan_metadata_contract_ids(conn: &Connection) -> Result<Vec<String>, Error> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut ordered: Vec<String> = Vec::new();
     SqliteConnection::visit_metadata_keys(conn, |key| {
-        if let Some((contract_id, _meta_key)) = SqliteConnection::parse_metadata_key(key) {
-            if seen.insert(contract_id.to_string()) {
-                ordered.push(contract_id.to_string());
-            }
+        let Some((contract_id, _meta_key)) = SqliteConnection::parse_metadata_key(key) else {
+            return Err(Error::CorruptionError(format!(
+                "metadata_table key is not in clr-meta:: format: {key}"
+            )));
+        };
+        if seen.insert(contract_id.to_string()) {
+            ordered.push(contract_id.to_string());
         }
         Ok(())
     })?;

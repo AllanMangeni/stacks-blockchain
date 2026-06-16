@@ -36,6 +36,18 @@ const SQL_FAIL_MESSAGE: &str = "PANIC: SQL Failure in Smart Contract VM.";
 pub const DATA_TABLE_NAME: &str = "data_table";
 pub const METADATA_TABLE_NAME: &str = "metadata_table";
 
+/// A borrowed `metadata_table` row, yielded by
+/// [`SqliteConnection::visit_metadata_rows`] and accepted by
+/// [`SqliteConnection::insert_metadata_row`].
+pub struct MetadataRow<'a> {
+    /// Full `clr-meta::<contract id>::<key>` key.
+    pub key: &'a str,
+    /// The `blockhash` column: a hex-encoded [`StacksBlockId`].
+    pub block_id: &'a str,
+    /// The stored metadata value.
+    pub value: &'a str,
+}
+
 pub struct SqliteConnection {
     conn: Connection,
 }
@@ -176,46 +188,52 @@ impl SqliteConnection {
         Ok(())
     }
 
-    /// Insert a `metadata_table` row verbatim: `key` is already in the
-    /// [`Self::make_metadata_key`] format.
+    /// Insert a `metadata_table` row verbatim. [`MetadataRow::key`] is assumed
+    /// to already be in the [`Self::make_metadata_key`] (`clr-meta::`) format.
     pub fn insert_metadata_row(
         conn: &Connection,
-        key: &str,
-        blockhash: &str,
-        value: &str,
+        row: &MetadataRow,
     ) -> Result<(), rusqlite::Error> {
         conn.prepare_cached("INSERT INTO metadata_table (blockhash, key, value) VALUES (?, ?, ?)")?
-            .execute(params![blockhash, key, value])?;
+            .execute(params![row.block_id, row.key, row.value])?;
         Ok(())
     }
 
-    /// Visit every `metadata_table` row on `conn` as `(key, blockhash, value)`.
-    pub fn visit_metadata_rows<F>(conn: &Connection, mut visit: F) -> Result<(), rusqlite::Error>
+    /// Visit every `metadata_table` row on `conn` as a [`MetadataRow`].
+    pub fn visit_metadata_rows<E, F>(conn: &Connection, mut visit: F) -> Result<(), E>
     where
-        F: FnMut(&str, &str, &str) -> Result<(), rusqlite::Error>,
+        E: From<rusqlite::Error>,
+        F: FnMut(&MetadataRow) -> Result<(), E>,
     {
         let mut stmt = conn.prepare("SELECT key, blockhash, value FROM metadata_table")?;
         let mut rows = stmt.query(NO_PARAMS)?;
         while let Some(row) = rows.next()? {
-            let key: String = row.get(0)?;
-            let blockhash: String = row.get(1)?;
-            let value: String = row.get(2)?;
-            visit(&key, &blockhash, &value)?;
+            let key = row.get_ref(0)?.as_str().map_err(rusqlite::Error::from)?;
+            let block_id = row.get_ref(1)?.as_str().map_err(rusqlite::Error::from)?;
+            let value = row.get_ref(2)?.as_str().map_err(rusqlite::Error::from)?;
+            visit(&MetadataRow {
+                key,
+                block_id,
+                value,
+            })?;
         }
         Ok(())
     }
 
-    /// Visit every `metadata_table` key on `conn` in ascending key order
-    /// (deterministic for scans that aggregate by contract).
-    pub fn visit_metadata_keys<F>(conn: &Connection, mut visit: F) -> Result<(), rusqlite::Error>
+    /// Visit every `metadata_table` key on `conn` in ascending key order.
+    ///
+    /// The ascending order is a guaranteed part of this method's contract
+    /// (`ORDER BY key`); callers such as the snapshot copier rely on it for
+    /// deterministic, reproducible scans (locked by `metadata_keys_visited_in_order`).
+    pub fn visit_metadata_keys<E, F>(conn: &Connection, mut visit: F) -> Result<(), E>
     where
-        F: FnMut(&str) -> Result<(), rusqlite::Error>,
+        E: From<rusqlite::Error>,
+        F: FnMut(&str) -> Result<(), E>,
     {
         let mut stmt = conn.prepare("SELECT key FROM metadata_table ORDER BY key")?;
         let mut rows = stmt.query(NO_PARAMS)?;
         while let Some(row) = rows.next()? {
-            let key: String = row.get(0)?;
-            visit(&key)?;
+            visit(row.get_ref(0)?.as_str().map_err(rusqlite::Error::from)?)?;
         }
         Ok(())
     }

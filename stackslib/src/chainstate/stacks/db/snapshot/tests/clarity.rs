@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 
 use clarity::vm::database::clarity_store::make_contract_hash_key;
-use clarity::vm::database::{ClarityBackingStore, SqliteConnection};
+use clarity::vm::database::{ClarityBackingStore, MetadataRow, SqliteConnection};
 use stacks_common::types::chainstate::{StacksBlockId, TrieHash};
 use stacks_common::util::hash::Sha512Trunc256Sum;
 use tempfile::tempdir;
@@ -265,29 +265,23 @@ fn test_squashed_clarity_marf_metadata_reads_work() {
     }
 }
 
-/// Metadata rows for a contract absent from the squashed trie, and rows
-/// whose key is not in the metadata format, are not copied.
+/// Metadata rows for a (well-formed) contract absent from the squashed trie
+/// are not copied.
 #[test]
 fn test_metadata_exclusions() {
     let dir = tempdir().unwrap();
     let src_dir = dir.path().join("src");
     let blocks = build_clarity_marf(&src_dir, 4, "test-contract", "");
 
-    // Rogue rows in src: a contract with no trie commitment and a key
-    // outside the metadata format.
+    // A rogue but well-formed row in src: a contract with no trie commitment.
     let src_conn = rusqlite::Connection::open(clarity_marf_db_path(&src_dir)).unwrap();
     SqliteConnection::insert_metadata_row(
         &src_conn,
-        "clr-meta::ST000000000000000000002AMW42H.ghost::source",
-        &blocks[0].to_hex(),
-        "ghost",
-    )
-    .unwrap();
-    SqliteConnection::insert_metadata_row(
-        &src_conn,
-        "not-a-metadata-key",
-        &blocks[0].to_hex(),
-        "junk",
+        &MetadataRow {
+            key: "clr-meta::ST000000000000000000002AMW42H.ghost::source",
+            block_id: &blocks[0].to_hex(),
+            value: "ghost",
+        },
     )
     .unwrap();
     drop(src_conn);
@@ -301,14 +295,61 @@ fn test_metadata_exclusions() {
 
     let conn = rusqlite::Connection::open(&squashed_db).unwrap();
     let mut rogue = 0;
-    SqliteConnection::visit_metadata_keys(&conn, |key| {
-        if key.contains("ghost") || key == "not-a-metadata-key" {
+    SqliteConnection::visit_metadata_keys(&conn, |key| -> Result<(), rusqlite::Error> {
+        if key.contains("ghost") {
             rogue += 1;
         }
         Ok(())
     })
     .unwrap();
-    assert_eq!(rogue, 0, "unrequired/malformed metadata must not be copied");
+    assert_eq!(rogue, 0, "unrequired metadata must not be copied");
+}
+
+/// A `metadata_table` row whose key is not in the `clr-meta::` format is a
+/// corruption signal: the copy must fail loudly rather than silently drop it.
+#[test]
+fn test_malformed_metadata_key_is_corruption() {
+    let dir = tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    let blocks = build_clarity_marf(&src_dir, 4, "test-contract", "");
+
+    let src_conn = rusqlite::Connection::open(clarity_marf_db_path(&src_dir)).unwrap();
+    SqliteConnection::insert_metadata_row(
+        &src_conn,
+        &MetadataRow {
+            key: "not-a-metadata-key",
+            block_id: &blocks[0].to_hex(),
+            value: "junk",
+        },
+    )
+    .unwrap();
+    drop(src_conn);
+
+    // Squash, then attempt the side-table copy directly so we can assert it errors
+    // (the squash_clarity_marf helper unwraps the copy).
+    let squashed_dir = dir.path().join("squashed");
+    std::fs::create_dir_all(&squashed_dir).unwrap();
+    let src_db = clarity_marf_db_path(&src_dir);
+    let dst_db = squashed_dir.join("marf.sqlite");
+
+    let open_opts = MARFOpenOpts::new(TrieHashCalculationMode::Deferred, "noop", true);
+    MARF::<StacksBlockId>::squash_to_path(
+        src_db.to_str().unwrap(),
+        dst_db.to_str().unwrap(),
+        open_opts,
+        blocks.last().unwrap(),
+        3,
+        "test",
+    )
+    .unwrap();
+
+    let err = copy_clarity_side_tables(src_db.to_str().unwrap(), dst_db.to_str().unwrap())
+        .expect_err("malformed metadata key must fail the copy");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("clr-meta"),
+        "expected a clr-meta format corruption error, got: {msg}"
+    );
 }
 
 /// Extending the squashed MARF and the archival MARF from the squash
