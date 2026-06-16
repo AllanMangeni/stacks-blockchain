@@ -409,22 +409,24 @@ impl StagingMicroblock {
     }
 }
 
-pub(crate) fn index_block_hash_to_rel_path(index_block_hash: &StacksBlockId) -> PathBuf {
-    let block_hash_bytes = index_block_hash.as_bytes();
-
-    PathBuf::from(to_hex(&block_hash_bytes[0..2]))
-        .join(to_hex(&block_hash_bytes[2..4]))
-        .join(index_block_hash.to_string())
-}
-
 impl StacksChainState {
+    /// Relative path, under a blocks dir, at which the block with this index
+    /// hash is stored: two 2-byte hex directory segments, then the full hash.
+    pub(crate) fn index_block_hash_to_rel_path(index_block_hash: &StacksBlockId) -> PathBuf {
+        let block_hash_bytes = index_block_hash.as_bytes();
+
+        PathBuf::from(to_hex(&block_hash_bytes[0..2]))
+            .join(to_hex(&block_hash_bytes[2..4]))
+            .join(index_block_hash.to_string())
+    }
+
     /// Get the path to a block in the chunk store
     pub fn get_index_block_path(
         blocks_dir: &str,
         index_block_hash: &StacksBlockId,
     ) -> Result<String, Error> {
-        let block_path =
-            PathBuf::from(blocks_dir).join(index_block_hash_to_rel_path(index_block_hash));
+        let block_path = PathBuf::from(blocks_dir)
+            .join(StacksChainState::index_block_hash_to_rel_path(index_block_hash));
 
         let blocks_path_str = block_path
             .to_str()
@@ -675,8 +677,8 @@ impl StacksChainState {
             let random_bytes = thread_rng().gen::<[u8; 8]>();
             let random_bytes_str = to_hex(&random_bytes);
             let index_block_hash = StacksBlockId::new(consensus_hash, block_header_hash);
-            let mut invalid_path =
-                PathBuf::from(blocks_dir).join(index_block_hash_to_rel_path(&index_block_hash));
+            let mut invalid_path = PathBuf::from(blocks_dir)
+                .join(StacksChainState::index_block_hash_to_rel_path(&index_block_hash));
             invalid_path
                 .file_name()
                 .expect("FATAL: index block path did not have file name");

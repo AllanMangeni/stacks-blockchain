@@ -85,7 +85,7 @@ fn test_epoch2_block_file_copy() {
     );
 
     // Create source block file for height 1.
-    // index_block_hash_to_rel_path uses 2-byte (4 hex char) directory segments.
+    // StacksChainState::index_block_hash_to_rel_path uses 2-byte (4 hex char) directory segments.
     let rel = format!("aabb/ccdd/{hash_hex}");
     let src_file = src_blocks_dir.join(&rel);
     std::fs::create_dir_all(src_file.parent().unwrap()).unwrap();
