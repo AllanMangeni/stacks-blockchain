@@ -491,23 +491,121 @@ impl ClarityBackingStore for MemoryBackingStore {
     }
 }
 
-#[test]
-fn trigger_bad_block_height() {
-    let mut store = MemoryBackingStore::default();
-    let contract_id = QualifiedContractIdentifier::transient();
-    // Use a block height that does NOT exist in MemoryBackingStore
-    // MemoryBackingStore::get_block_at_height returns None for any height != 0
-    let nonexistent_height = 42;
-    let key = "some-metadata-key";
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let err =
-        sqlite_get_metadata_manual(&mut store, nonexistent_height, &contract_id, key).unwrap_err();
+    #[test]
+    fn trigger_bad_block_height() {
+        let mut store = MemoryBackingStore::default();
+        let contract_id = QualifiedContractIdentifier::transient();
+        // Use a block height that does NOT exist in MemoryBackingStore
+        // MemoryBackingStore::get_block_at_height returns None for any height != 0
+        let nonexistent_height = 42;
+        let key = "some-metadata-key";
 
-    assert!(
-        matches!(
-            err,
-            VmExecutionError::Runtime(RuntimeError::BadBlockHeight(_), _)
-        ),
-        "Expected BadBlockHeight. Got {err}"
-    );
+        let err = sqlite_get_metadata_manual(&mut store, nonexistent_height, &contract_id, key)
+            .unwrap_err();
+
+        assert!(
+            matches!(
+                err,
+                VmExecutionError::Runtime(RuntimeError::BadBlockHeight(_), _)
+            ),
+            "Expected BadBlockHeight. Got {err}"
+        );
+    }
+
+    #[test]
+    fn metadata_keys_visited_in_order() {
+        let conn = SqliteConnection::memory().unwrap();
+        let block_id = StacksBlockId([0x11; 32]).to_hex();
+
+        // Insert keys out of order; visit_metadata_keys must yield them sorted.
+        for key in [
+            "clr-meta::contract-z::source",
+            "clr-meta::contract-a::source",
+            "clr-meta::contract-m::source",
+            "clr-meta::contract-a::other",
+        ] {
+            SqliteConnection::insert_metadata_row(
+                &conn,
+                &MetadataRow {
+                    key,
+                    block_id: &block_id,
+                    value: "v",
+                },
+            )
+            .unwrap();
+        }
+
+        let mut visited: Vec<String> = Vec::new();
+        SqliteConnection::visit_metadata_keys(&conn, |key| -> Result<(), rusqlite::Error> {
+            visited.push(key.to_string());
+            Ok(())
+        })
+        .unwrap();
+
+        let mut sorted = visited.clone();
+        sorted.sort();
+        assert_eq!(
+            visited, sorted,
+            "visit_metadata_keys must yield keys in ascending order"
+        );
+        assert_eq!(visited.len(), 4, "all rows must be visited");
+    }
+
+    #[test]
+    fn metadata_key_make_and_parse() {
+        // Round-trips through the `clr-meta::<contract id>::<key>` format.
+        let key = SqliteConnection::make_metadata_key("ST000.contract", "var");
+        assert_eq!(key, "clr-meta::ST000.contract::var");
+        assert_eq!(
+            SqliteConnection::parse_metadata_key(&key),
+            Some(("ST000.contract", "var"))
+        );
+
+        // The metadata key may itself contain "::"; only the first separator
+        // after the prefix is the boundary (contract ids never contain "::").
+        let key = SqliteConnection::make_metadata_key("ST000.contract", "vm-metadata::9::sub");
+        assert_eq!(
+            SqliteConnection::parse_metadata_key(&key),
+            Some(("ST000.contract", "vm-metadata::9::sub"))
+        );
+
+        // An empty metadata key is still well-formed.
+        let key = SqliteConnection::make_metadata_key("ST000.contract", "");
+        assert_eq!(
+            SqliteConnection::parse_metadata_key(&key),
+            Some(("ST000.contract", ""))
+        );
+
+        // A realistic mainnet contract id round-trips.
+        let key =
+            SqliteConnection::make_metadata_key("SP000000000000000000002Q6VF78.pox-4", "vars");
+        assert_eq!(
+            SqliteConnection::parse_metadata_key(&key),
+            Some(("SP000000000000000000002Q6VF78.pox-4", "vars"))
+        );
+
+        // The parser only checks shape, not identifiers: a key with an empty
+        // contract id parses here (it's rejected later by contract-id parsing).
+        assert_eq!(
+            SqliteConnection::parse_metadata_key("clr-meta::::var"),
+            Some(("", "var"))
+        );
+
+        // Keys outside the format (or with the prefix but no second separator)
+        // do not parse.
+        assert_eq!(
+            SqliteConnection::parse_metadata_key("not-a-metadata-key"),
+            None
+        );
+        assert_eq!(
+            SqliteConnection::parse_metadata_key("clr-meta::no-second-separator"),
+            None
+        );
+        assert_eq!(SqliteConnection::parse_metadata_key("clr-meta::"), None);
+        assert_eq!(SqliteConnection::parse_metadata_key(""), None);
+    }
 }
