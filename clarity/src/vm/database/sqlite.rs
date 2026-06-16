@@ -32,6 +32,10 @@ use crate::vm::types::QualifiedContractIdentifier;
 
 const SQL_FAIL_MESSAGE: &str = "PANIC: SQL Failure in Smart Contract VM.";
 
+/// Clarity side-storage table names.
+pub const DATA_TABLE_NAME: &str = "data_table";
+pub const METADATA_TABLE_NAME: &str = "metadata_table";
+
 pub struct SqliteConnection {
     conn: Connection,
 }

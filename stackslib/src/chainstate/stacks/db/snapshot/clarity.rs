@@ -17,7 +17,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use clarity::vm::database::clarity_store::make_contract_hash_key;
-use clarity::vm::database::SqliteConnection;
+use clarity::vm::database::{SqliteConnection, DATA_TABLE_NAME, METADATA_TABLE_NAME};
 use clarity::vm::types::QualifiedContractIdentifier;
 use rusqlite::{Connection, OpenFlags};
 use stacks_common::types::chainstate::StacksBlockId;
@@ -30,7 +30,7 @@ use crate::chainstate::stacks::index::Error;
 use crate::util_lib::db::sqlite_open;
 
 /// Clarity side-storage tables copied by [`copy_clarity_side_tables`].
-pub(super) const CLARITY_SIDE_TABLES: &[&str] = &["data_table", "metadata_table"];
+pub(super) const CLARITY_SIDE_TABLES: &[&str] = &[DATA_TABLE_NAME, METADATA_TABLE_NAME];
 
 /// Copy Clarity side-storage tables (`data_table`, `metadata_table`) from a
 /// source MARF database to a squashed MARF database.
@@ -83,11 +83,11 @@ pub fn copy_clarity_side_tables(
 
             // data_table is content-addressed (key = hex MARFValue), like
             // the index `__fork_storage`, so it shares the same stream-filter.
-            let data_rows = copy_leaf_referenced_rows(conn, "data_table", "key", &needed_keys)?;
+            let data_rows = copy_leaf_referenced_rows(conn, DATA_TABLE_NAME, "key", &needed_keys)?;
 
             let t = Instant::now();
             let (metadata_scanned, metadata_rows) =
-                with_indexes_dropped(conn, "metadata_table", |conn| {
+                with_indexes_dropped(conn, METADATA_TABLE_NAME, |conn| {
                     copy_required_metadata_rows(&src_conn, conn, &required_contract_ids)
                 })?;
             info!(
