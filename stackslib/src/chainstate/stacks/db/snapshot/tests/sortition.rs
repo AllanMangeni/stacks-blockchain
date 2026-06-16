@@ -17,7 +17,8 @@
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection};
+use rstest::rstest;
+use rusqlite::{params, Connection, OptionalExtension};
 use stacks_common::types::chainstate::{
     BlockHeaderHash, BurnchainHeaderHash, ConsensusHash, SortitionId, TrieHash,
 };
@@ -441,13 +442,91 @@ fn test_sortition_stacks_chain_tips_by_burn_view_copied() {
     );
 }
 
-/// Sortition tip memo rows pointing above the Stacks boundary are
-/// rewritten down to the anchor in both memo tables.
-#[test]
-fn test_sortition_tip_copy_rewrites_rows_above_stacks_boundary() {
+/// Expected outcome of a single Stacks-tip memo row under the boundary copy.
+enum Expect {
+    /// Copied unchanged (row at or below the boundary).
+    Verbatim,
+    /// Kept but clamped down to the anchor (above-boundary anchor row).
+    RewrittenToAnchor,
+    /// Excluded entirely (above-boundary, not the anchor).
+    Dropped,
+}
+
+/// `stacks_chain_tips` boundary handling (the relaxed-match memo table): a row
+/// at/below the boundary is copied verbatim, an above-boundary anchor row is
+/// rewritten down to the anchor, and an above-boundary non-anchor row is
+/// dropped.
+#[rstest]
+#[case::pass_through(5, false, Expect::Verbatim)]
+#[case::rewrite_anchor(20, true, Expect::RewrittenToAnchor)]
+#[case::drop_non_anchor(20, false, Expect::Dropped)]
+fn test_sortition_stacks_chain_tip_boundary(
+    #[case] input_height: u64,
+    #[case] input_is_anchor: bool,
+    #[case] expect: Expect,
+) {
     let dir = tempdir().unwrap();
     let (conn, src_path) = create_sortition_source_db(dir.path());
+    insert_snapshot(&conn, "sort_0", "bhh_0", 0);
+    insert_snapshot(&conn, "sort_1", "bhh_1", 1);
 
+    let boundary = sortition_test_tip_boundary(10);
+    let anchor_ch = boundary.anchor_consensus_hash.to_string();
+    let anchor_bhh = boundary.anchor_block_hash.to_string();
+    // stacks_chain_tips has no consensus_hash FK, so the input hash is free.
+    let input_ch = if input_is_anchor {
+        anchor_ch.clone()
+    } else {
+        "ch_other".to_string()
+    };
+    test_insert_stacks_chain_tip_row(&conn, &hex_id("sort_1"), &input_ch, "bh_in", input_height)
+        .unwrap();
+    drop(conn);
+
+    let dst_path = dir.path().join("dst_sort.sqlite");
+    create_sortition_dest_db(&dst_path, &["sort_0", "sort_1"]);
+
+    copy_sortition_side_tables_with_boundary(
+        src_path.to_str().unwrap(),
+        dst_path.to_str().unwrap(),
+        Some(&boundary),
+    )
+    .unwrap();
+
+    let dst_conn = Connection::open(&dst_path).unwrap();
+    let row: Option<(String, String, i64)> = dst_conn
+        .query_row(
+            "SELECT consensus_hash, block_hash, block_height FROM stacks_chain_tips \
+             WHERE sortition_id = ?1",
+            params![hex_id("sort_1")],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .unwrap();
+
+    let expected = match expect {
+        Expect::Verbatim => Some((input_ch, "bh_in".to_string(), input_height as i64)),
+        Expect::RewrittenToAnchor => {
+            Some((anchor_ch, anchor_bhh, boundary.anchor_block_height as i64))
+        }
+        Expect::Dropped => None,
+    };
+    assert_eq!(row, expected);
+}
+
+/// `stacks_chain_tips_by_burn_view` boundary handling (the strict-match memo
+/// table): its anchor match requires BOTH `consensus_hash` AND
+/// `burn_view_consensus_hash` to equal the anchor. An above-boundary row with
+/// the anchor consensus hash is kept+rewritten only when its burn-view hash
+/// also matches; a mismatching burn view is dropped (whereas
+/// `stacks_chain_tips` would keep it -- see
+/// [`test_sortition_stacks_chain_tip_boundary`]).
+#[rstest]
+#[case::rewrite_when_burn_view_matches(true)]
+#[case::drop_when_burn_view_differs(false)]
+fn test_sortition_by_burn_view_boundary(#[case] burn_view_is_anchor: bool) {
+    let dir = tempdir().unwrap();
+    let (conn, src_path) = create_sortition_source_db(dir.path());
     insert_snapshot(&conn, "sort_0", "bhh_0", 0);
     insert_snapshot(&conn, "sort_1", "bhh_1", 1);
 
@@ -455,17 +534,25 @@ fn test_sortition_tip_copy_rewrites_rows_above_stacks_boundary() {
     let anchor_ch = boundary.anchor_consensus_hash.to_string();
     let anchor_burn_view_ch = boundary.anchor_burn_view_consensus_hash.to_string();
     let anchor_bhh = boundary.anchor_block_hash.to_string();
-    let source_tip_bhh = BlockHeaderHash([0x33; 32]).to_string();
 
-    test_set_snapshot_consensus_hash(&conn, &hex_id("sort_1"), &anchor_burn_view_ch).unwrap();
-    test_insert_stacks_chain_tip_row(&conn, &hex_id("sort_1"), &anchor_ch, &source_tip_bhh, 20)
-        .unwrap();
+    // Both by_burn_view columns FK to snapshots(consensus_hash): the row's
+    // consensus_hash is always the anchor; its burn_view_consensus_hash is the
+    // anchor (rewrite) or a different, snapshot-backed value (drop).
+    test_set_snapshot_consensus_hash(&conn, &hex_id("sort_0"), &anchor_ch).unwrap();
+    let burn_view_ch = if burn_view_is_anchor {
+        anchor_burn_view_ch.clone()
+    } else {
+        let wrong_ch = ConsensusHash([0x22; 20]).to_string();
+        test_set_snapshot_consensus_hash(&conn, &hex_id("sort_1"), &wrong_ch).unwrap();
+        wrong_ch
+    };
+    // Above the boundary (20 > 10) so the height branch fires.
     test_insert_stacks_chain_tip_by_burn_view_row(
         &conn,
         &hex_id("sort_1"),
         &anchor_ch,
-        &anchor_burn_view_ch,
-        &source_tip_bhh,
+        &burn_view_ch,
+        "bh_bv",
         20,
     )
     .unwrap();
@@ -482,28 +569,29 @@ fn test_sortition_tip_copy_rewrites_rows_above_stacks_boundary() {
     .unwrap();
 
     let dst_conn = Connection::open(&dst_path).unwrap();
-    let old_tip: (String, String, i64) = dst_conn
-        .query_row(
-            "SELECT consensus_hash, block_hash, block_height FROM stacks_chain_tips \
-             WHERE sortition_id = ?1",
-            params![hex_id("sort_1")],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .unwrap();
-    assert_eq!(old_tip, (anchor_ch.clone(), anchor_bhh.clone(), 10));
-
-    let burn_view_tip: (String, String, String, i64) = dst_conn
+    let row: Option<(String, String, String, i64)> = dst_conn
         .query_row(
             "SELECT consensus_hash, burn_view_consensus_hash, block_hash, block_height \
              FROM stacks_chain_tips_by_burn_view WHERE sortition_id = ?1",
             params![hex_id("sort_1")],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
+        .optional()
         .unwrap();
-    assert_eq!(
-        burn_view_tip,
-        (anchor_ch, anchor_burn_view_ch, anchor_bhh, 10)
-    );
+
+    let expected = if burn_view_is_anchor {
+        // Strict anchor match -> kept and clamped to the anchor.
+        Some((
+            anchor_ch,
+            anchor_burn_view_ch,
+            anchor_bhh,
+            boundary.anchor_block_height as i64,
+        ))
+    } else {
+        // Burn view != anchor -> dropped (stacks_chain_tips would keep it).
+        None
+    };
+    assert_eq!(row, expected);
 }
 
 /// Production-path integration. The copy keeps the canonical chain's
