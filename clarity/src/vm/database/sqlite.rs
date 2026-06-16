@@ -155,11 +155,11 @@ impl SqliteConnection {
     pub fn insert_metadata(
         conn: &Connection,
         bhh: &StacksBlockId,
-        contract_hash: &str,
+        contract_id: &str,
         key: &str,
         value: &str,
     ) -> Result<(), VmExecutionError> {
-        let key = Self::make_metadata_key(contract_hash, key);
+        let key = Self::make_metadata_key(contract_id, key);
         let params = params![bhh, key, value];
 
         if let Err(e) = conn.execute(
@@ -268,10 +268,10 @@ impl SqliteConnection {
     pub fn get_metadata(
         conn: &Connection,
         bhh: &StacksBlockId,
-        contract_hash: &str,
+        contract_id: &str,
         key: &str,
     ) -> Result<Option<String>, VmExecutionError> {
-        let key = Self::make_metadata_key(contract_hash, key);
+        let key = Self::make_metadata_key(contract_id, key);
         let params = params![bhh, key];
 
         match conn
