@@ -4500,9 +4500,13 @@ impl SortitionDB {
 /// The squash anchors the Stacks MARF at the boundary tenure's FIRST block,
 /// but the fully-synced source already processed the whole tenure, so its
 /// `stacks_chain_tips*` memo rows for that burn view point at the tenure's
-/// LAST block. Copied verbatim, those memos would make a booting node treat
+/// LAST block. If copied in full, those memos would make a booting node treat
 /// the dropped intra-tenure descendants as already processed; rewriting them
 /// down to the anchor makes the node re-fetch and process them from peers.
+///
+/// Rows already at or below the boundary re copied verbatim;
+/// above-boundary rows are rewritten down to the anchor only
+/// when they belong to the anchor tenure, and dropped otherwise.
 #[derive(Debug, Clone)]
 pub struct SortitionTipCopyBoundary {
     pub max_stacks_height: u64,
