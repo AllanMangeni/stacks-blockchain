@@ -115,6 +115,7 @@ fn open_readonly_clarity_db(path: &str) -> Result<Connection, Error> {
 /// Open the MARF at `db_path` strictly read-only: contract probes must
 /// never take a write lock (the source may be a live node's file).
 fn open_readonly_marf(db_path: &str) -> Result<MARF<StacksBlockId>, Error> {
+    // Clarity MARF always stores external blobs, whether archival or squashed.
     let open_opts = MARFOpenOpts::new(TrieHashCalculationMode::Deferred, "noop", true);
     let storage = TrieFileStorage::open_readonly(db_path, open_opts)?;
     Ok(MARF::from_storage(storage))
