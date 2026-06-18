@@ -16,21 +16,27 @@
 //! Block-preservation copy tests: epoch-2 block files, confirmed microblock
 //! streams, and the Nakamoto staging-blocks DB.
 
+use std::path::Path;
+
 use rusqlite::{params, Connection};
 use stacks_common::codec::StacksMessageCodec;
-use stacks_common::types::chainstate::{BlockHeaderHash, ConsensusHash, StacksBlockId};
-use stacks_common::util::hash::Sha512Trunc256Sum;
-use stacks_common::util::secp256k1::MessageSignature;
+use stacks_common::types::chainstate::{
+    BlockHeaderHash, ConsensusHash, StacksAddress, StacksBlockId,
+};
+use stacks_common::util::hash::{Hash160, MerkleTree, Sha512Trunc256Sum};
+use stacks_common::util::secp256k1::{MessageSignature, Secp256k1PrivateKey, Secp256k1PublicKey};
 use tempfile::tempdir;
 
-use super::super::common::unclassified_tables;
+use super::super::blocks::{
+    copy_confirmed_epoch2_microblocks, copy_epoch2_block_files, copy_nakamoto_staging_blocks,
+    NAKAMOTO_STAGING_TABLES,
+};
+use super::super::common::{clone_schemas_from_source, unclassified_tables};
 use super::{
     create_dest_db_with_canonical_blocks, create_source_db, insert_epoch2_block_header_with_ibh,
     insert_nakamoto_header,
 };
-use crate::chainstate::nakamoto::staging_blocks::{
-    test_insert_nakamoto_staging_block_row, NAKAMOTO_STAGING_DB_SCHEMA_LATEST,
-};
+use crate::chainstate::nakamoto::staging_blocks::NAKAMOTO_STAGING_DB_SCHEMA_LATEST;
 use crate::chainstate::stacks::db::StacksChainState;
 use crate::chainstate::stacks::index::Error;
 use crate::chainstate::stacks::{
@@ -41,7 +47,7 @@ use crate::core::EMPTY_MICROBLOCK_PARENT_HASH;
 
 /// Create a squashed index DB whose `block_headers` rows are the given
 /// `(index_block_hash, block_height)` pairs.
-fn create_block_headers_index(path: &std::path::Path, rows: &[(&str, u32)]) {
+fn create_block_headers_index(path: &Path, rows: &[(&str, u32)]) {
     let conn = create_source_db(path);
     for (i, (ibh, height)) in rows.iter().enumerate() {
         insert_epoch2_block_header_with_ibh(&conn, *height, ibh, &format!("_{i}"));
@@ -52,7 +58,7 @@ fn create_block_headers_index(path: &std::path::Path, rows: &[(&str, u32)]) {
 /// headers seeded from the given labels, via the production writer.
 /// Returns each label's computed `index_block_hash` hex, for the staging
 /// fixtures that must join against it.
-fn create_nakamoto_headers_index(path: &std::path::Path, labels: &[&str]) -> Vec<String> {
+fn create_nakamoto_headers_index(path: &Path, labels: &[&str]) -> Vec<String> {
     let conn = create_source_db(path);
     labels
         .iter()
@@ -92,7 +98,7 @@ fn test_epoch2_block_file_copy() {
     std::fs::write(&src_file, b"block data here").unwrap();
 
     // Copy.
-    let stats = super::super::blocks::copy_epoch2_block_files(
+    let stats = copy_epoch2_block_files(
         idx_path.to_str().unwrap(),
         src_blocks_dir.to_str().unwrap(),
         dst_blocks_dir.to_str().unwrap(),
@@ -125,7 +131,7 @@ fn test_epoch2_block_file_missing_source_is_error() {
 
     std::fs::create_dir_all(&src_blocks_dir).unwrap();
 
-    let err = super::super::blocks::copy_epoch2_block_files(
+    let err = copy_epoch2_block_files(
         idx_path.to_str().unwrap(),
         src_blocks_dir.to_str().unwrap(),
         dst_blocks_dir.to_str().unwrap(),
@@ -152,7 +158,7 @@ fn test_no_unclassified_nakamoto_staging_tables() {
     let conn = create_source_nakamoto_db(&dir.path().join("src.sqlite"));
     // nakamoto.sqlite is not MARF-backed, so unlike the other drift guards
     // no MARF infra tables are exempted here.
-    let extra = unclassified_tables(&conn, super::super::blocks::NAKAMOTO_STAGING_TABLES);
+    let extra = unclassified_tables(&conn, NAKAMOTO_STAGING_TABLES);
     assert!(
         extra.is_empty(),
         "unclassified Nakamoto staging table(s) {extra:?}: classify each in \
@@ -162,11 +168,7 @@ fn test_no_unclassified_nakamoto_staging_tables() {
 
 /// Build a minimal serializable StacksMicroblock with the given sequence
 /// and prev_block, returning (block_hash, serialized_bytes).
-fn make_test_microblock(sequence: u16, prev_block: &BlockHeaderHash) -> (BlockHeaderHash, Vec<u8>) {
-    use stacks_common::types::chainstate::StacksAddress;
-    use stacks_common::util::hash::Hash160;
-    use stacks_common::util::secp256k1::{Secp256k1PrivateKey, Secp256k1PublicKey};
-
+fn make_microblock(sequence: u16, prev_block: &BlockHeaderHash) -> (BlockHeaderHash, Vec<u8>) {
     // Create a minimal STX transfer transaction.
     let privk = Secp256k1PrivateKey::from_hex(
         "6d430bb91222408e7706c9001cfaeb91b08c2be6d5ac95779ab52c6b431950e001",
@@ -186,8 +188,7 @@ fn make_test_microblock(sequence: u16, prev_block: &BlockHeaderHash) -> (BlockHe
     // Use StacksMicroblock::first_unsigned for sequence 0,
     // or build with from_parent_unsigned for others.
     let txid_bytes = tx.txid().as_bytes().to_vec();
-    let merkle_tree =
-        stacks_common::util::hash::MerkleTree::<Sha512Trunc256Sum>::new(&[txid_bytes]);
+    let merkle_tree = MerkleTree::<Sha512Trunc256Sum>::new(&[txid_bytes]);
     let tx_merkle_root = merkle_tree.root();
 
     let header = StacksMicroblockHeader {
@@ -292,7 +293,7 @@ fn insert_staging_block_with_microblock_parent(
 /// ([`StacksChainState::open_nakamoto_staging_blocks`]), so the fixture
 /// always carries the current schema instead of replaying migrations by
 /// hand.
-fn create_source_nakamoto_db(path: &std::path::Path) -> Connection {
+fn create_source_nakamoto_db(path: &Path) -> Connection {
     // The first open instantiates the base schema only; migrations run on
     // subsequent opens, so a second open brings the DB to the current
     // version - exactly as node restarts do in production.
@@ -303,7 +304,7 @@ fn create_source_nakamoto_db(path: &std::path::Path) -> Connection {
     Connection::open(path).unwrap()
 }
 
-/// Insert a nakamoto_staging_blocks row.
+/// Insert a nakamoto_staging_blocks row
 fn insert_nakamoto_staging_block(
     conn: &Connection,
     block_hash: &str,
@@ -314,15 +315,21 @@ fn insert_nakamoto_staging_block(
     obtain_method: &str,
     data: &[u8],
 ) {
-    test_insert_nakamoto_staging_block_row(
-        conn,
-        block_hash,
-        consensus_hash,
-        parent_block_id,
-        height,
-        index_block_hash,
-        obtain_method,
-        data,
+    conn.execute(
+        "INSERT INTO nakamoto_staging_blocks \
+             (block_hash, consensus_hash, parent_block_id, is_tenure_start, \
+              burn_attachable, processed, orphaned, height, index_block_hash, \
+              processed_time, obtain_method, signing_weight, data) \
+             VALUES (?1, ?2, ?3, 1, 1, 1, 0, ?4, ?5, 0, ?6, 100, ?7)",
+        params![
+            block_hash,
+            consensus_hash,
+            parent_block_id,
+            height,
+            index_block_hash,
+            obtain_method,
+            data,
+        ],
     )
     .unwrap();
 }
@@ -345,8 +352,8 @@ fn test_microblock_stream_copy() {
     let parent_ibh = StacksBlockId::new(&parent_ch, &parent_bh);
 
     // Build a 2-microblock stream: mblock0 (seq=0, prev=parent_bh) -> mblock1 (seq=1, prev=mblock0_hash).
-    let (mblock0_hash, mblock0_data) = make_test_microblock(0, &parent_bh);
-    let (mblock1_hash, mblock1_data) = make_test_microblock(1, &mblock0_hash);
+    let (mblock0_hash, mblock0_data) = make_microblock(0, &parent_bh);
+    let (mblock1_hash, mblock1_data) = make_microblock(1, &mblock0_hash);
 
     // Insert microblock metadata and data into source.
     let imh0 = StacksBlockId::new(&parent_ch, &mblock0_hash);
@@ -380,7 +387,7 @@ fn test_microblock_stream_copy() {
     insert_staging_microblock_data(&src_conn, &mblock1_hash, &mblock1_data);
 
     // Also insert an orphaned fork microblock that should NOT be copied.
-    let (fork_hash, fork_data) = make_test_microblock(0, &BlockHeaderHash([0xCC; 32]));
+    let (fork_hash, fork_data) = make_microblock(0, &BlockHeaderHash([0xCC; 32]));
     let fork_imh = StacksBlockId::new(&parent_ch, &fork_hash);
     insert_staging_microblock(
         &src_conn,
@@ -408,7 +415,7 @@ fn test_microblock_stream_copy() {
             params![src_path.to_str().unwrap()],
         )
         .unwrap();
-    super::super::common::clone_schemas_from_source(
+    clone_schemas_from_source(
         &dst_conn,
         &[
             "staging_blocks",
@@ -456,11 +463,9 @@ fn test_microblock_stream_copy() {
     drop(dst_conn);
 
     // Copy microblocks.
-    let stats = super::super::blocks::copy_confirmed_epoch2_microblocks(
-        src_path.to_str().unwrap(),
-        dst_path.to_str().unwrap(),
-    )
-    .unwrap();
+    let stats =
+        copy_confirmed_epoch2_microblocks(src_path.to_str().unwrap(), dst_path.to_str().unwrap())
+            .unwrap();
 
     assert_eq!(stats.streams_copied, 1);
     assert_eq!(stats.microblock_rows_copied, 2);
@@ -520,7 +525,7 @@ fn test_microblock_stream_unprocessed_skipped() {
     let parent_ibh = StacksBlockId::new(&parent_ch, &parent_bh);
 
     // Build a 1-microblock stream where the microblock is NOT processed.
-    let (mblock0_hash, mblock0_data) = make_test_microblock(0, &parent_bh);
+    let (mblock0_hash, mblock0_data) = make_microblock(0, &parent_bh);
     let imh0 = StacksBlockId::new(&parent_ch, &mblock0_hash);
     insert_staging_microblock(
         &src_conn,
@@ -546,7 +551,7 @@ fn test_microblock_stream_unprocessed_skipped() {
             params![src_path.to_str().unwrap()],
         )
         .unwrap();
-    super::super::common::clone_schemas_from_source(
+    clone_schemas_from_source(
         &dst_conn,
         &[
             "staging_blocks",
@@ -574,11 +579,9 @@ fn test_microblock_stream_unprocessed_skipped() {
     drop(dst_conn);
 
     // Copy - stream should be skipped (not error).
-    let stats = super::super::blocks::copy_confirmed_epoch2_microblocks(
-        src_path.to_str().unwrap(),
-        dst_path.to_str().unwrap(),
-    )
-    .unwrap();
+    let stats =
+        copy_confirmed_epoch2_microblocks(src_path.to_str().unwrap(), dst_path.to_str().unwrap())
+            .unwrap();
 
     assert_eq!(stats.streams_copied, 0);
     assert_eq!(stats.streams_skipped, 1);
@@ -602,8 +605,8 @@ fn test_microblock_stream_missing_tip_skipped() {
 
     // Only the seq-0 microblock exists; the seq-1 tip the child references
     // was never stored.
-    let (mblock0_hash, mblock0_data) = make_test_microblock(0, &parent_bh);
-    let (mblock1_hash, _) = make_test_microblock(1, &mblock0_hash);
+    let (mblock0_hash, mblock0_data) = make_microblock(0, &parent_bh);
+    let (mblock1_hash, _) = make_microblock(1, &mblock0_hash);
     let imh0 = StacksBlockId::new(&parent_ch, &mblock0_hash);
     insert_staging_microblock(
         &src_conn,
@@ -628,7 +631,7 @@ fn test_microblock_stream_missing_tip_skipped() {
             params![src_path.to_str().unwrap()],
         )
         .unwrap();
-    super::super::common::clone_schemas_from_source(
+    clone_schemas_from_source(
         &dst_conn,
         &[
             "staging_blocks",
@@ -655,11 +658,9 @@ fn test_microblock_stream_missing_tip_skipped() {
     );
     drop(dst_conn);
 
-    let stats = super::super::blocks::copy_confirmed_epoch2_microblocks(
-        src_path.to_str().unwrap(),
-        dst_path.to_str().unwrap(),
-    )
-    .unwrap();
+    let stats =
+        copy_confirmed_epoch2_microblocks(src_path.to_str().unwrap(), dst_path.to_str().unwrap())
+            .unwrap();
 
     assert_eq!(stats.streams_copied, 0, "incomplete stream must be skipped");
     assert_eq!(stats.streams_skipped, 1);
@@ -683,7 +684,7 @@ fn test_nakamoto_copy() {
     let ibhs = create_nakamoto_headers_index(&idx_path, &["canonical_ibh_1", "canonical_ibh_2"]);
 
     // Create source nakamoto.sqlite with canonical + non-canonical rows.
-    let src_conn = create_source_nakamoto_db(&src_nak_path);
+    let src_conn: Connection = create_source_nakamoto_db(&src_nak_path);
     insert_nakamoto_staging_block(
         &src_conn,
         "canonical_bh_1",
@@ -718,7 +719,7 @@ fn test_nakamoto_copy() {
     drop(src_conn);
 
     // Copy.
-    let stats = super::super::blocks::copy_nakamoto_staging_blocks(
+    let stats = copy_nakamoto_staging_blocks(
         src_nak_path.to_str().unwrap(),
         dst_nak_path.to_str().unwrap(),
         idx_path.to_str().unwrap(),
@@ -874,7 +875,7 @@ fn test_nakamoto_copy_excludes_post_boundary_blocks() {
     drop(src_conn);
 
     // Copy: only the two <=H blocks are retained.
-    let stats = super::super::blocks::copy_nakamoto_staging_blocks(
+    let stats = copy_nakamoto_staging_blocks(
         src_nak_path.to_str().unwrap(),
         dst_nak_path.to_str().unwrap(),
         idx_path.to_str().unwrap(),
