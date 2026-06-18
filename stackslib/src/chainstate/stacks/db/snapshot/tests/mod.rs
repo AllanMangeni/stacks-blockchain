@@ -30,6 +30,7 @@ use crate::chainstate::stacks::index::marf::{MARFOpenOpts, MARF};
 use crate::chainstate::stacks::index::{trie_sql, ClarityMarfTrieId, Error, MARFValue};
 
 mod blocks;
+mod clarity;
 mod index;
 
 /// Create a source `index.sqlite`
