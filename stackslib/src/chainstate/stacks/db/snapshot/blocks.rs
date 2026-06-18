@@ -44,7 +44,6 @@ pub struct Epoch2BlockFileCopyStats {
     pub files_copied: u64,
     pub total_bytes: u64,
     pub genesis_skipped: u64,
-    pub copied_paths: Vec<String>,
 }
 
 /// Statistics for nakamoto staging block copy.
@@ -287,9 +286,6 @@ pub fn copy_epoch2_block_files(
 
         stats.files_copied += 1;
         stats.total_bytes += bytes_copied;
-        stats
-            .copied_paths
-            .push(rel_path.to_string_lossy().into_owned());
 
         if stats.files_copied % 1000 == 0 {
             info!(

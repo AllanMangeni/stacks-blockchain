@@ -108,7 +108,6 @@ fn test_epoch2_block_file_copy() {
     assert_eq!(stats.files_copied, 1);
     assert_eq!(stats.genesis_skipped, 1);
     assert_eq!(stats.total_bytes, 15); // "block data here".len()
-    assert_eq!(stats.copied_paths, vec![rel.clone()]);
 
     // Destination file exists and matches.
     let dst_file = dst_blocks_dir.join(&rel);
