@@ -15,10 +15,13 @@
 
 //! Burnchain DB (burnchain.sqlite) copy tests.
 
+use std::path::Path;
+
 use rusqlite::{params, Connection};
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use tempfile::tempdir;
 
+use super::super::burnchain::{copy_burnchain_db, COPIED_TABLES, SCHEMA_ONLY_TABLES};
 use super::super::common::unclassified_tables;
 use crate::burnchains::db::BurnchainDB;
 use crate::burnchains::{Burnchain, PoxConstants};
@@ -35,11 +38,16 @@ fn test_no_unclassified_burnchain_tables() {
     let conn = create_burnchain_db(&dir.path().join("src.sqlite"));
     // burnchain.sqlite is not MARF-backed, so unlike the other drift guards
     // no MARF infra tables are exempted here.
-    let extra = unclassified_tables(&conn, super::super::burnchain::REQUIRED_TABLES);
+    let known: Vec<&str> = COPIED_TABLES
+        .iter()
+        .chain(SCHEMA_ONLY_TABLES)
+        .copied()
+        .collect();
+    let extra = unclassified_tables(&conn, &known);
     assert!(
         extra.is_empty(),
-        "unclassified burnchain table(s) {extra:?}: classify each in REQUIRED_TABLES \
-         (snapshot/burnchain.rs)"
+        "unclassified burnchain table(s) {extra:?}: classify each in COPIED_TABLES or \
+         SCHEMA_ONLY_TABLES (snapshot/burnchain.rs)"
     );
 }
 
@@ -47,7 +55,7 @@ fn test_no_unclassified_burnchain_tables() {
 /// ([`BurnchainDB::connect`]), so the fixture always carries the current
 /// schema instead of replaying migrations by hand. `connect` also seeds
 /// the regtest first-block header.
-fn create_burnchain_db(path: &std::path::Path) -> Connection {
+fn create_burnchain_db(path: &Path) -> Connection {
     let burnchain = Burnchain::regtest(":memory:");
     let _db = BurnchainDB::connect(path.to_str().unwrap(), &burnchain, true)
         .expect("burnchain DB init failed");
@@ -67,10 +75,7 @@ fn fixture_bhh(i: u8) -> BurnchainHeaderHash {
 /// cannot drift from what production actually writes: a real sortition DB
 /// whose canonical chain is the genesis snapshot ([`GENESIS_BHH`] at height
 /// 0) followed by `hashes` at heights 1... Returns its sqlite path.
-fn create_squashed_sortition(
-    dir: &std::path::Path,
-    hashes: &[BurnchainHeaderHash],
-) -> std::path::PathBuf {
+fn create_squashed_sortition(dir: &Path, hashes: &[BurnchainHeaderHash]) -> std::path::PathBuf {
     let db_dir = dir.join("sortition");
     let mut db = SortitionDB::connect(
         db_dir.to_str().unwrap(),
@@ -126,7 +131,7 @@ fn test_burnchain_db_copy() {
         .unwrap();
     drop(src);
 
-    let stats = super::super::burnchain::copy_burnchain_db(
+    let stats = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -217,7 +222,7 @@ fn test_burnchain_db_existing_destination_is_error() {
     // A stale destination left over from a prior run must not be touched.
     std::fs::write(&dst_path, b"stale data").unwrap();
 
-    let err = super::super::burnchain::copy_burnchain_db(
+    let err = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -259,7 +264,7 @@ fn test_burnchain_db_excludes_non_canonical_fork() {
     BurnchainDB::test_insert_block_header_row(&src, 1, "hash_b", "parent_b").unwrap();
     drop(src);
 
-    let stats = super::super::burnchain::copy_burnchain_db(
+    let stats = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -299,7 +304,7 @@ fn test_burnchain_db_block_ops_follow_canonical_headers() {
     BurnchainDB::test_insert_block_ops_row(&src, "fork", "op_f", "tx_f").unwrap();
     drop(src);
 
-    let stats = super::super::burnchain::copy_burnchain_db(
+    let stats = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -343,7 +348,7 @@ fn test_burnchain_db_anchor_blocks_filtered() {
     BurnchainDB::test_insert_override_row(&src, 99, "map_99").unwrap();
     drop(src);
 
-    let stats = super::super::burnchain::copy_burnchain_db(
+    let stats = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -352,26 +357,26 @@ fn test_burnchain_db_anchor_blocks_filtered() {
     .unwrap();
 
     assert_eq!(stats.anchor_blocks_rows, 1);
-    assert_eq!(stats.overrides_rows, 1);
 
     let dst = Connection::open(&dst_path).unwrap();
     let cycle: i64 = dst
         .query_row("SELECT reward_cycle FROM anchor_blocks", [], |r| r.get(0))
         .unwrap();
     assert_eq!(cycle, 1);
-    let override_map: String = dst
-        .query_row("SELECT affirmation_map FROM overrides", [], |r| r.get(0))
+    // `overrides` is schema-only: the table exists in the dst, but no rows are
+    // copied -- not even for a canonical reward cycle.
+    let override_rows: i64 = dst
+        .query_row("SELECT COUNT(*) FROM overrides", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(override_map, "map_1");
-    let cycle99: i64 = dst
+    assert_eq!(override_rows, 0, "overrides must not be row-copied");
+    let anchor99: i64 = dst
         .query_row(
-            "SELECT (SELECT COUNT(*) FROM anchor_blocks WHERE reward_cycle = 99) \
-             + (SELECT COUNT(*) FROM overrides WHERE reward_cycle = 99)",
+            "SELECT COUNT(*) FROM anchor_blocks WHERE reward_cycle = 99",
             [],
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(cycle99, 0, "unreferenced cycle must not be copied");
+    assert_eq!(anchor99, 0, "unreferenced anchor block must not be copied");
 }
 
 /// A missing source burnchain.sqlite is an error, and the read-only
@@ -384,7 +389,7 @@ fn test_burnchain_db_missing_source_is_error() {
 
     let sort_path = create_squashed_sortition(dir.path(), &[]);
 
-    let result = super::super::burnchain::copy_burnchain_db(
+    let result = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -414,7 +419,7 @@ fn test_burnchain_db_sortition_tip_mismatch_is_error() {
     drop(src);
 
     // Pass expected_burn_height=10, but sortition tip is 5.
-    let result = super::super::burnchain::copy_burnchain_db(
+    let result = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -441,7 +446,7 @@ fn test_burnchain_db_fresh_output_dir() {
     BurnchainDB::test_insert_block_header_row(&src, 0, &GENESIS_BHH.to_string(), "none").unwrap();
     drop(src);
 
-    let stats = super::super::burnchain::copy_burnchain_db(
+    let stats = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),
@@ -476,7 +481,7 @@ fn test_burnchain_db_copy_fails_when_source_missing_canonical_hash() {
     .unwrap();
     drop(src);
 
-    let result = super::super::burnchain::copy_burnchain_db(
+    let result = copy_burnchain_db(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         sort_path.to_str().unwrap(),

@@ -28,15 +28,29 @@ use crate::chainstate::burn::db::sortdb::SortitionDB;
 use crate::chainstate::stacks::index::Error;
 use crate::util_lib::db::sqlite_open;
 
-/// Tables required in all burnchain.sqlite versions.
-pub(super) const REQUIRED_TABLES: &[&str] = &[
+/// Tables copied (with canonical-filtered content) into the squashed burnchain DB.
+pub(super) const COPIED_TABLES: &[&str] = &[
     "burnchain_db_block_headers",
     "burnchain_db_block_ops",
     "block_commit_metadata",
     "anchor_blocks",
-    "overrides",
     "db_config",
 ];
+
+/// Tables the burnchain copy clones for schema fidelity but does not populate.
+/// `overrides` (reward-cycle affirmation-map overrides) is never read or written
+/// by any production path, so it is intentionally schema-only: cloning its schema
+/// keeps the dst complete and drift-guarded without copying rows.
+pub(super) const SCHEMA_ONLY_TABLES: &[&str] = &["overrides"];
+
+/// Every table whose schema must exist in the squashed dst (copied + schema-only).
+fn all_required_tables() -> Vec<&'static str> {
+    COPIED_TABLES
+        .iter()
+        .chain(SCHEMA_ONLY_TABLES)
+        .copied()
+        .collect()
+}
 
 /// The canonical burn-hash set staged by [`populate_canonical_burn_hashes`],
 /// as a SELECT fragment.
@@ -49,7 +63,6 @@ pub struct BurnchainDbCopyStats {
     pub block_ops_rows: u64,
     pub block_commit_metadata_rows: u64,
     pub anchor_blocks_rows: u64,
-    pub overrides_rows: u64,
 }
 
 /// Open a read-only connection to the squashed sortition DB.
@@ -184,12 +197,6 @@ fn burnchain_copy_specs() -> Vec<TableCopySpec> {
                  )"
             .into(),
         },
-        TableCopySpec {
-            table: "overrides",
-            source_sql: "SELECT * FROM src.overrides \
-                 WHERE reward_cycle IN (SELECT reward_cycle FROM anchor_blocks)"
-                .into(),
-        },
     ]
 }
 
@@ -211,7 +218,7 @@ fn copy_burnchain_db_inner(
     conn: &Connection,
     canonical_hashes: &[BurnchainHeaderHash],
 ) -> Result<BurnchainDbCopyStats, Error> {
-    clone_schemas_from_source(conn, REQUIRED_TABLES)?;
+    clone_schemas_from_source(conn, &all_required_tables())?;
 
     populate_canonical_burn_hashes(conn, canonical_hashes)?;
 
@@ -235,15 +242,13 @@ fn copy_burnchain_db_inner(
         block_ops_rows: copied_rows(&results, "burnchain_db_block_ops"),
         block_commit_metadata_rows: copied_rows(&results, "block_commit_metadata"),
         anchor_blocks_rows: copied_rows(&results, "anchor_blocks"),
-        overrides_rows: copied_rows(&results, "overrides"),
     };
     info!(
         "Copied burnchain DB";
         "block_headers_rows" => stats.block_headers_rows,
         "block_ops_rows" => stats.block_ops_rows,
         "block_commit_metadata_rows" => stats.block_commit_metadata_rows,
-        "anchor_blocks_rows" => stats.anchor_blocks_rows,
-        "overrides_rows" => stats.overrides_rows
+        "anchor_blocks_rows" => stats.anchor_blocks_rows
     );
     Ok(stats)
 }
