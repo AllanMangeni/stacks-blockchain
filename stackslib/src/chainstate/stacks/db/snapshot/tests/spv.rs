@@ -25,6 +25,7 @@ use tempfile::tempdir;
 use super::super::common::unclassified_tables;
 use crate::burnchains::bitcoin::spv::{SpvClient, SPV_DB_VERSION};
 use crate::burnchains::bitcoin::BitcoinNetworkType;
+use crate::chainstate::stacks::index::Error;
 
 /// Drift guard: every table the SPV migrations create must be
 /// classified, so a future migration can't silently drop one from the copy.
@@ -165,7 +166,7 @@ fn test_spv_headers_copy() {
 #[case::exactly_second_interval_end(4031, 3, 2)]
 #[case::one_past_second_interval_end(4032, 3, 2)]
 fn test_spv_headers_chain_work_boundaries(
-    #[case] burn_height: u32,
+    #[case] burn_height: u64,
     #[case] src_chain_work_intervals: u32,
     #[case] expected_chain_work_rows: u64,
 ) {
@@ -174,7 +175,7 @@ fn test_spv_headers_chain_work_boundaries(
     let dst_path = dir.path().join("dst.sqlite");
 
     let mut client = create_spv_headers_db(&src_path);
-    seed_headers(&mut client, burn_height);
+    seed_headers(&mut client, burn_height as u32);
     drop(client);
     seed_chain_work(&src_path, src_chain_work_intervals);
 
@@ -185,7 +186,7 @@ fn test_spv_headers_chain_work_boundaries(
     )
     .unwrap();
 
-    assert_eq!(stats.headers_rows, u64::from(burn_height) + 1);
+    assert_eq!(stats.headers_rows, burn_height + 1);
     assert_eq!(stats.chain_work_rows, expected_chain_work_rows);
 }
 
@@ -228,12 +229,16 @@ fn test_spv_headers_existing_destination_is_error() {
     create_spv_headers_db(&src_path);
     std::fs::write(&dst_path, b"stale data").unwrap();
 
-    let result = super::super::spv::copy_spv_headers(
+    let err = super::super::spv::copy_spv_headers(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         100,
+    )
+    .expect_err("existing destination should error");
+    assert!(
+        matches!(err, Error::DestinationExists(_)),
+        "expected DestinationExists, got {err:?}"
     );
-    assert!(result.is_err(), "existing destination should error");
     assert_eq!(
         std::fs::read(&dst_path).unwrap(),
         b"stale data",

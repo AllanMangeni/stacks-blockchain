@@ -37,28 +37,18 @@ pub struct SpvHeadersCopyStats {
 
 /// Copy canonical SPV headers up to `burn_height` into a new destination.
 ///
-/// Returns an error if the source file does not exist, or if the
-/// destination already exists.
+/// Returns [`Error::DestinationExists`] if the destination already exists.
 pub fn copy_spv_headers(
     src_path: &str,
     dst_path: &str,
-    burn_height: u32,
+    burn_height: u64,
 ) -> Result<SpvHeadersCopyStats, Error> {
-    if !Path::new(src_path).exists() {
-        return Err(Error::IOError(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("SPV headers source not found: {src_path}"),
-        )));
-    }
     if Path::new(dst_path).exists() {
-        return Err(Error::IOError(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!("SPV headers destination already exists: {dst_path}"),
-        )));
+        return Err(Error::DestinationExists(dst_path.to_string()));
     }
 
     if let Some(parent) = Path::new(dst_path).parent() {
-        fs::create_dir_all(parent).map_err(Error::IOError)?;
+        fs::create_dir_all(parent)?;
     }
 
     with_offline_write_session(dst_path, &[("src", src_path)], "", |conn| {
@@ -69,8 +59,8 @@ pub fn copy_spv_headers(
 /// Build the copy specs for the SPV headers DB: `db_config` verbatim,
 /// `headers` up to `burn_height`, `chain_work` for complete difficulty
 /// intervals only.
-fn spv_copy_specs(burn_height: u32) -> Vec<TableCopySpec> {
-    let complete_intervals = num_complete_chain_work_intervals(u64::from(burn_height));
+fn spv_copy_specs(burn_height: u64) -> Vec<TableCopySpec> {
+    let complete_intervals = num_complete_chain_work_intervals(burn_height);
     vec![
         TableCopySpec {
             table: "db_config",
@@ -91,14 +81,20 @@ fn spv_copy_specs(burn_height: u32) -> Vec<TableCopySpec> {
 
 fn copy_spv_headers_inner(
     conn: &Connection,
-    burn_height: u32,
+    burn_height: u64,
 ) -> Result<SpvHeadersCopyStats, Error> {
     clone_schemas_from_source(conn, REQUIRED_TABLES)?;
 
     let results = execute_copy_specs(conn, &spv_copy_specs(burn_height))?;
 
-    Ok(SpvHeadersCopyStats {
+    let stats = SpvHeadersCopyStats {
         headers_rows: copied_rows(&results, "headers"),
         chain_work_rows: copied_rows(&results, "chain_work"),
-    })
+    };
+    info!(
+        "Copied SPV headers";
+        "headers_rows" => stats.headers_rows,
+        "chain_work_rows" => stats.chain_work_rows
+    );
+    Ok(stats)
 }
