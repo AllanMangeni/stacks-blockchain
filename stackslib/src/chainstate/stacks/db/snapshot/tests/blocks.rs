@@ -774,6 +774,50 @@ fn test_nakamoto_copy() {
     drop(dst_conn);
 }
 
+/// The copy writes into a NEW destination only: a pre-existing
+/// `nakamoto.sqlite` (e.g. left over from a prior failed squash) is an
+/// error, never appended to or overwritten.
+#[test]
+fn test_nakamoto_copy_existing_destination_is_error() {
+    let dir = tempdir().unwrap();
+    let src_nak_path = dir.path().join("src_nakamoto.sqlite");
+    let dst_nak_path = dir.path().join("dst_nakamoto.sqlite");
+    let idx_path = dir.path().join("squashed_index.sqlite");
+
+    let ibhs = create_nakamoto_headers_index(&idx_path, &["canonical_ibh_1"]);
+    let src_conn = create_source_nakamoto_db(&src_nak_path);
+    insert_nakamoto_staging_block(
+        &src_conn,
+        "canonical_bh_1",
+        "canonical_ch_1",
+        "parent_1",
+        100,
+        &ibhs[0],
+        "Fetched",
+        b"block_data_1",
+    );
+    drop(src_conn);
+
+    // A stale destination left over from a prior run must not be touched.
+    std::fs::write(&dst_nak_path, b"stale data").unwrap();
+
+    let err = copy_nakamoto_staging_blocks(
+        src_nak_path.to_str().unwrap(),
+        dst_nak_path.to_str().unwrap(),
+        idx_path.to_str().unwrap(),
+    )
+    .expect_err("existing destination should error");
+    assert!(
+        matches!(err, Error::DestinationExists(_)),
+        "expected DestinationExists, got {err:?}"
+    );
+    assert_eq!(
+        std::fs::read(&dst_nak_path).unwrap(),
+        b"stale data",
+        "existing destination must be left untouched"
+    );
+}
+
 /// The squash boundary lives entirely in the squashed index: a staging
 /// row is retained iff its index_block_hash is in
 /// idx.nakamoto_block_headers (<=H). A block above H, or an in-index but

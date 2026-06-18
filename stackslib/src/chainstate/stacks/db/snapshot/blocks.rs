@@ -350,11 +350,17 @@ fn nakamoto_copy_specs() -> Vec<TableCopySpec> {
 /// iff its `index_block_hash` is in that index's `nakamoto_block_headers`. This function has no
 /// independent notion of the squash boundary H, so the index must already be scoped to H
 /// -- passing a full or stale index would copy post-boundary rows into the artifact.
+///
+/// Returns an error if `dst_nakamoto_path` already exists.
 pub fn copy_nakamoto_staging_blocks(
     src_nakamoto_path: &str,
     dst_nakamoto_path: &str,
     squashed_index_path: &str,
 ) -> Result<NakamotoBlockCopyStats, Error> {
+    if Path::new(dst_nakamoto_path).exists() {
+        return Err(Error::DestinationExists(dst_nakamoto_path.to_string()));
+    }
+
     with_offline_write_session(
         dst_nakamoto_path,
         &[("src", src_nakamoto_path), ("idx", squashed_index_path)],
