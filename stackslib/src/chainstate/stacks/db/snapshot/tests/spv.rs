@@ -23,7 +23,7 @@ use stacks_common::deps_common::bitcoin::util::hash::Sha256dHash;
 use tempfile::tempdir;
 
 use super::super::common::unclassified_tables;
-use crate::burnchains::bitcoin::spv::{SpvClient, SPV_DB_VERSION};
+use crate::burnchains::bitcoin::spv::{SpvClient, BLOCK_DIFFICULTY_CHUNK_SIZE, SPV_DB_VERSION};
 use crate::burnchains::bitcoin::BitcoinNetworkType;
 use crate::chainstate::stacks::index::Error;
 
@@ -57,6 +57,19 @@ fn create_spv_headers_db(path: &std::path::Path) -> SpvClient {
         false,
     )
     .expect("SPV headers DB init failed")
+}
+
+/// Open an existing headers.sqlite read-only.
+fn open_spv_headers_db_readonly(path: &std::path::Path) -> SpvClient {
+    SpvClient::new(
+        path.to_str().unwrap(),
+        0,
+        None,
+        BitcoinNetworkType::Regtest,
+        false,
+        false,
+    )
+    .expect("opening copied headers.sqlite as SpvClient failed")
 }
 
 /// A synthetic-but-real header for height `h`, with deterministic fields.
@@ -152,6 +165,83 @@ fn test_spv_headers_copy() {
         .query_row("SELECT version FROM db_config", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SPV_DB_VERSION);
+}
+
+/// End-to-end round trip: a copied headers.sqlite must be consumable through
+/// the production [`SpvClient`] reader - the same headers and `chain_work` as
+/// the source within the boundary, nothing beyond it.
+#[test]
+fn test_spv_headers_copy_round_trip() {
+    let dir = tempdir().unwrap();
+    let src_path = dir.path().join("src.sqlite");
+    let dst_path = dir.path().join("dst.sqlite");
+
+    // Copy at the end of the second complete interval: the copy keeps intervals
+    // 0 and 1 plus the headers through interval 1's last block, so the aggregate
+    // path has >1 stored interval and an empty partial tail. The source extends a
+    // full interval further, so the boundary actually drops a header and an interval.
+    let boundary = 2 * BLOCK_DIFFICULTY_CHUNK_SIZE - 1; // 4031: last block of interval 1
+    let source_tip = 3 * BLOCK_DIFFICULTY_CHUNK_SIZE - 1; // 6047: source also stores interval 2
+
+    let mut client = create_spv_headers_db(&src_path);
+    seed_headers(&mut client, source_tip as u32);
+    client.update_chain_work().unwrap();
+    drop(client);
+
+    let stats = super::super::spv::copy_spv_headers(
+        src_path.to_str().unwrap(),
+        dst_path.to_str().unwrap(),
+        boundary,
+    )
+    .unwrap();
+    assert_eq!(stats.headers_rows, boundary + 1);
+    assert_eq!(stats.chain_work_rows, 2);
+
+    let src = open_spv_headers_db_readonly(&src_path);
+    let dst = open_spv_headers_db_readonly(&dst_path);
+
+    // Headers through the boundary round-trip identically through the reader,
+    // and nothing above the boundary survives in the copy.
+    assert_eq!(
+        dst.read_block_headers(0, boundary + 1).unwrap(),
+        src.read_block_headers(0, boundary + 1).unwrap()
+    );
+    assert!(
+        dst.read_block_header(boundary + 1).unwrap().is_none(),
+        "copy must not hold a header above the boundary"
+    );
+
+    // chain_work round-trips as real Uint256: both complete intervals match the
+    // source; the interval past the boundary is dropped.
+    for interval in [0, 1] {
+        let work = dst.find_interval_work(interval).unwrap();
+        assert!(work.is_some(), "interval {interval} work must be copied");
+        assert_eq!(
+            work,
+            src.find_interval_work(interval).unwrap(),
+            "interval {interval} work must round-trip through the reader"
+        );
+    }
+    assert!(
+        dst.find_interval_work(2).unwrap().is_none(),
+        "interval 2 is past the boundary and must not be copied"
+    );
+
+    // The copy is consumable by the aggregate-work path, not just per-interval
+    // reads. Its tip sits on interval 1's boundary (no partial tail), so the
+    // total equals that interval's running work.
+    assert_eq!(
+        dst.get_chain_work().unwrap(),
+        dst.find_interval_work(1)
+            .unwrap()
+            .expect("interval 1 work present"),
+        "aggregate chain work over the copy must equal interval 1's running total"
+    );
+
+    // Setup invariants: confirm the boundary actually elided data, so the
+    // truncation assertions above are not satisfied by an empty src.
+    assert!(src.read_block_header(boundary + 1).unwrap().is_some());
+    assert!(src.find_interval_work(2).unwrap().is_some());
 }
 
 /// Chain-work interval boundary cases: interval `k` is copied iff it is
