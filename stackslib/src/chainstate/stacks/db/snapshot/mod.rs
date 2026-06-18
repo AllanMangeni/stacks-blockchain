@@ -24,6 +24,7 @@
 //!
 //! Detectable violations surface as `CorruptionError`s.
 
+mod clarity;
 pub(crate) mod common;
 pub(crate) mod fork_storage;
 mod index;
@@ -32,6 +33,7 @@ mod sortition;
 #[cfg(test)]
 mod tests;
 
+pub use clarity::{copy_clarity_side_tables, ClaritySideTableStats};
 pub use index::{copy_index_side_tables, IndexSideTableStats};
 pub use sortition::{
     copy_sortition_side_tables, copy_sortition_side_tables_with_boundary, SortitionSideTableStats,
