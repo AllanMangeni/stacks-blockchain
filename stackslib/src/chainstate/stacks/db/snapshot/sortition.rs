@@ -89,9 +89,7 @@ fn populate_canonical_sortitions(
     let mut burn_hashes: HashSet<String> = HashSet::new();
     let mut orphans: u64 = 0;
     for (_, sortition_id, _) in &canonical {
-        match SortitionDB::get_snapshot_burn_header_hash(src_conn, sortition_id).map_err(|e| {
-            Error::CorruptionError(format!("cannot read src snapshot {sortition_id}: {e}"))
-        })? {
+        match SortitionDB::get_snapshot_burn_header_hash(src_conn, sortition_id)? {
             Some(burn_header_hash) => {
                 burn_hashes.insert(burn_header_hash);
             }
@@ -105,48 +103,33 @@ fn populate_canonical_sortitions(
     }
 
     session_conn
-        .execute_batch("CREATE TEMP TABLE canonical_sortitions (sortition_id TEXT PRIMARY KEY)")
-        .map_err(Error::SQLError)?;
-    session_conn
-        .execute_batch(
-            "CREATE TEMP TABLE canonical_burn_hashes (burn_header_hash TEXT PRIMARY KEY)",
-        )
-        .map_err(Error::SQLError)?;
+        .execute_batch("CREATE TEMP TABLE canonical_sortitions (sortition_id TEXT PRIMARY KEY)")?;
+    session_conn.execute_batch(
+        "CREATE TEMP TABLE canonical_burn_hashes (burn_header_hash TEXT PRIMARY KEY)",
+    )?;
     // A savepoint batches the temp-table inserts whether or not the session
     // already holds an open transaction.
-    session_conn
-        .execute_batch("SAVEPOINT canonical_sortitions")
-        .map_err(Error::SQLError)?;
-    let mut insert = session_conn
-        .prepare("INSERT INTO canonical_sortitions (sortition_id) VALUES (?1)")
-        .map_err(Error::SQLError)?;
+    session_conn.execute_batch("SAVEPOINT canonical_sortitions")?;
+    let mut insert =
+        session_conn.prepare("INSERT INTO canonical_sortitions (sortition_id) VALUES (?1)")?;
     for (_, sortition_id, _) in &canonical {
-        insert
-            .execute(params![sortition_id])
-            .map_err(Error::SQLError)?;
+        insert.execute(params![sortition_id])?;
     }
     drop(insert);
-    let mut insert = session_conn
-        .prepare("INSERT INTO canonical_burn_hashes (burn_header_hash) VALUES (?1)")
-        .map_err(Error::SQLError)?;
+    let mut insert =
+        session_conn.prepare("INSERT INTO canonical_burn_hashes (burn_header_hash) VALUES (?1)")?;
     for burn_header_hash in &burn_hashes {
-        insert
-            .execute([burn_header_hash])
-            .map_err(Error::SQLError)?;
+        insert.execute([burn_header_hash])?;
     }
     drop(insert);
-    session_conn
-        .execute_batch("RELEASE canonical_sortitions")
-        .map_err(Error::SQLError)?;
+    session_conn.execute_batch("RELEASE canonical_sortitions")?;
 
     Ok(())
 }
 
 fn validate_tip_boundary(boundary: Option<&SortitionTipCopyBoundary>) -> Result<(), Error> {
     if let Some(boundary) = boundary {
-        boundary
-            .validate()
-            .map_err(|e| Error::CorruptionError(e.to_string()))?;
+        boundary.validate()?;
     }
     Ok(())
 }
@@ -253,6 +236,8 @@ fn sortition_copy_specs(boundary: Option<&SortitionTipCopyBoundary>) -> Vec<Tabl
 /// Copy required non-MARF tables from the source sortition DB into the
 /// squashed destination. Only canonical rows (determined by the squashed MARF's
 /// `marf_squashed_blocks`) are included.
+///
+/// `dst_path` is the squashed sortition DB already created by `MARF::squash_to_path`.
 pub fn copy_sortition_side_tables(
     src_path: &str,
     dst_path: &str,
@@ -274,8 +259,7 @@ pub fn copy_sortition_side_tables_with_boundary(
     let leaf_hashes = collect_canonical_leaf_hashes::<SortitionId>(dst_path)?;
     // Read-only source handle for the sortdb-owned readers; the session
     // below still attaches src for the copy specs.
-    let src_conn =
-        sqlite_open(src_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false).map_err(Error::SQLError)?;
+    let src_conn = sqlite_open(src_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)?;
 
     with_offline_write_session(dst_path, &[("src", src_path)], "", |conn| {
         clone_schemas_from_source(conn, REQUIRED_TABLES)?;
@@ -300,22 +284,16 @@ fn copy_sortition_tables_inner(
     // Execute descriptor-driven copies.
     let specs = sortition_copy_specs(stacks_boundary);
     let results = execute_copy_specs(session_conn, &specs)?;
-    if !SortitionDB::stacks_tip_memos_within_boundary(session_conn, stacks_boundary)
-        .map_err(|e| Error::CorruptionError(format!("cannot check sortition tip boundary: {e}")))?
-    {
+    if !SortitionDB::stacks_tip_memos_within_boundary(session_conn, stacks_boundary)? {
         return Err(Error::CorruptionError(
             "copied sortition tip row points past the Stacks MARF boundary".into(),
         ));
     }
 
-    session_conn
-        .execute_batch("DROP TABLE IF EXISTS temp.canonical_sortitions")
-        .map_err(Error::SQLError)?;
-    session_conn
-        .execute_batch("DROP TABLE IF EXISTS temp.canonical_burn_hashes")
-        .map_err(Error::SQLError)?;
+    session_conn.execute_batch("DROP TABLE IF EXISTS temp.canonical_sortitions")?;
+    session_conn.execute_batch("DROP TABLE IF EXISTS temp.canonical_burn_hashes")?;
 
-    Ok(SortitionSideTableStats {
+    let stats = SortitionSideTableStats {
         snapshots_rows: copied_rows(&results, "snapshots"),
         leader_keys_rows: copied_rows(&results, "leader_keys"),
         block_commits_rows: copied_rows(&results, "block_commits"),
@@ -335,5 +313,11 @@ fn copy_sortition_tables_inner(
         epochs_rows: copied_rows(&results, "epochs"),
         db_config_rows: copied_rows(&results, "db_config"),
         fork_storage_rows,
-    })
+    };
+    info!(
+        "Copied sortition side tables";
+        "snapshots_rows" => stats.snapshots_rows,
+        "fork_storage_rows" => stats.fork_storage_rows
+    );
+    Ok(stats)
 }
