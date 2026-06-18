@@ -4507,7 +4507,7 @@ impl SortitionDB {
 /// the dropped intra-tenure descendants as already processed; rewriting them
 /// down to the anchor makes the node re-fetch and process them from peers.
 ///
-/// Rows already at or below the boundary re copied verbatim;
+/// Rows already at or below the boundary are copied verbatim;
 /// above-boundary rows are rewritten down to the anchor only
 /// when they belong to the anchor tenure, and dropped otherwise.
 #[derive(Debug, Clone)]
@@ -4630,11 +4630,12 @@ impl SortitionDB {
             return Ok(true);
         };
         let max_height = u64_to_sql(boundary.max_stacks_height)?;
+        // Check if ANY above-boundary memo row exists.
         conn.query_row(
-            "SELECT COUNT(*) = 0 FROM ( \
-                 SELECT block_height FROM stacks_chain_tips WHERE block_height > ?1 \
+            "SELECT NOT EXISTS( \
+                 SELECT 1 FROM stacks_chain_tips WHERE block_height > ?1 \
                  UNION ALL \
-                 SELECT block_height FROM stacks_chain_tips_by_burn_view WHERE block_height > ?1 \
+                 SELECT 1 FROM stacks_chain_tips_by_burn_view WHERE block_height > ?1 \
              )",
             params![max_height],
             |row| row.get(0),
