@@ -24,6 +24,7 @@ use crate::burnchains::db::BurnchainDB;
 use crate::burnchains::{Burnchain, PoxConstants};
 use crate::chainstate::burn::db::sortdb::tests::test_append_snapshot;
 use crate::chainstate::burn::db::sortdb::SortitionDB;
+use crate::chainstate::stacks::index::Error;
 use crate::core::{StacksEpoch, StacksEpochExtension};
 
 /// Drift guard: every table the burnchain migrations create must be
@@ -183,7 +184,11 @@ fn test_burnchain_db_copy() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(version, 3, "db_config copied verbatim");
+    assert_eq!(
+        version,
+        u64::from(BurnchainDB::SCHEMA_VERSION),
+        "db_config copied verbatim"
+    );
     let fork_rows: i64 = dst
         .query_row(
             "SELECT (SELECT COUNT(*) FROM burnchain_db_block_headers WHERE block_hash = 'fork_hash_1') \
@@ -194,6 +199,40 @@ fn test_burnchain_db_copy() {
         )
         .unwrap();
     assert_eq!(fork_rows, 0, "fork rows must be absent by key");
+}
+
+/// The copy writes into a NEW destination only: a pre-existing
+/// `burnchain.sqlite` (e.g. left over from a prior failed squash) is an
+/// error, never appended to or overwritten.
+#[test]
+fn test_burnchain_db_existing_destination_is_error() {
+    let dir = tempdir().unwrap();
+    let src_path = dir.path().join("src.sqlite");
+    let dst_path = dir.path().join("dst.sqlite");
+
+    let sort_path = create_squashed_sortition(dir.path(), &[fixture_bhh(1)]);
+    let src = create_burnchain_db(&src_path);
+    drop(src);
+
+    // A stale destination left over from a prior run must not be touched.
+    std::fs::write(&dst_path, b"stale data").unwrap();
+
+    let err = super::super::burnchain::copy_burnchain_db(
+        src_path.to_str().unwrap(),
+        dst_path.to_str().unwrap(),
+        sort_path.to_str().unwrap(),
+        1,
+    )
+    .expect_err("existing destination should error");
+    assert!(
+        matches!(err, Error::DestinationExists(_)),
+        "expected DestinationExists, got {err:?}"
+    );
+    assert_eq!(
+        std::fs::read(&dst_path).unwrap(),
+        b"stale data",
+        "existing destination must be left untouched"
+    );
 }
 
 /// Two headers at the same height: only the one whose hash is in the

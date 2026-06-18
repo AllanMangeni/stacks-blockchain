@@ -91,27 +91,26 @@ fn populate_canonical_burn_hashes(
 ) -> Result<(), Error> {
     conn.execute_batch(
         "CREATE TEMP TABLE canonical_burn_hashes (burn_header_hash TEXT PRIMARY KEY)",
-    )
-    .map_err(Error::SQLError)?;
+    )?;
     // A savepoint batches the inserts whether or not the session already
     // holds an open transaction (the copy session does, and
     // autocommit-per-row would be slow).
-    conn.execute_batch("SAVEPOINT canonical_burn_hashes")
-        .map_err(Error::SQLError)?;
-    let mut stmt = conn
-        .prepare("INSERT INTO canonical_burn_hashes (burn_header_hash) VALUES (?1)")
-        .map_err(Error::SQLError)?;
+    conn.execute_batch("SAVEPOINT canonical_burn_hashes")?;
+    let mut stmt =
+        conn.prepare("INSERT INTO canonical_burn_hashes (burn_header_hash) VALUES (?1)")?;
     for hash in canonical_hashes {
-        stmt.execute([hash.to_string()]).map_err(Error::SQLError)?;
+        stmt.execute([hash.to_string()])?;
     }
     drop(stmt);
-    conn.execute_batch("RELEASE canonical_burn_hashes")
-        .map_err(Error::SQLError)?;
+    conn.execute_batch("RELEASE canonical_burn_hashes")?;
     Ok(())
 }
 
 /// Copy canonical rows from source `burnchain.sqlite` into a new destination,
 /// using the squashed sortition DB as the authoritative canonical set.
+///
+/// Returns an error if a required source is missing or if the destination
+/// already exists.
 ///
 /// Preserves dependency-ordered copy:
 /// 1. Canonical headers and ops (burn_header_hash filtered)
@@ -122,21 +121,14 @@ pub fn copy_burnchain_db(
     src_burnchain_db_path: &str,
     dst_burnchain_db_path: &str,
     squashed_sortition_path: &str,
-    expected_burn_height: u32,
+    expected_burn_height: u64,
 ) -> Result<BurnchainDbCopyStats, Error> {
-    if !Path::new(src_burnchain_db_path).exists() {
-        return Err(Error::CorruptionError(format!(
-            "Source burnchain DB not found: {src_burnchain_db_path}"
-        )));
-    }
-    if !Path::new(squashed_sortition_path).exists() {
-        return Err(Error::CorruptionError(format!(
-            "Squashed sortition DB not found: {squashed_sortition_path}"
-        )));
+    if Path::new(dst_burnchain_db_path).exists() {
+        return Err(Error::DestinationExists(dst_burnchain_db_path.to_string()));
     }
 
     if let Some(parent) = Path::new(dst_burnchain_db_path).parent() {
-        fs::create_dir_all(parent).map_err(Error::IOError)?;
+        fs::create_dir_all(parent)?;
     }
 
     let sort_conn = open_squashed_sortition_db(squashed_sortition_path)?;
@@ -205,9 +197,9 @@ fn burnchain_copy_specs() -> Vec<TableCopySpec> {
 /// caller's expected burn height.
 fn assert_sortition_tip_height(
     sortition_tip_height: u64,
-    expected_burn_height: u32,
+    expected_burn_height: u64,
 ) -> Result<(), Error> {
-    if sortition_tip_height != u64::from(expected_burn_height) {
+    if sortition_tip_height != expected_burn_height {
         return Err(Error::CorruptionError(format!(
             "Sortition tip height mismatch: expected {expected_burn_height}, got {sortition_tip_height}"
         )));
@@ -238,11 +230,20 @@ fn copy_burnchain_db_inner(
 
     let results = execute_copy_specs(conn, &burnchain_copy_specs())?;
 
-    Ok(BurnchainDbCopyStats {
+    let stats = BurnchainDbCopyStats {
         block_headers_rows: copied_rows(&results, "burnchain_db_block_headers"),
         block_ops_rows: copied_rows(&results, "burnchain_db_block_ops"),
         block_commit_metadata_rows: copied_rows(&results, "block_commit_metadata"),
         anchor_blocks_rows: copied_rows(&results, "anchor_blocks"),
         overrides_rows: copied_rows(&results, "overrides"),
-    })
+    };
+    info!(
+        "Copied burnchain DB";
+        "block_headers_rows" => stats.block_headers_rows,
+        "block_ops_rows" => stats.block_ops_rows,
+        "block_commit_metadata_rows" => stats.block_commit_metadata_rows,
+        "anchor_blocks_rows" => stats.anchor_blocks_rows,
+        "overrides_rows" => stats.overrides_rows
+    );
+    Ok(stats)
 }
