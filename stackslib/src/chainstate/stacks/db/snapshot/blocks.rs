@@ -21,12 +21,8 @@ use rusqlite::{params, Connection, OpenFlags};
 use stacks_common::types::chainstate::{BlockHeaderHash, ConsensusHash, StacksBlockId};
 
 use super::common::{
-    clone_schemas_from_source, copied_rows, execute_copy_specs, with_indexes_dropped,
-    with_offline_write_session, TableCopySpec,
-};
-use crate::chainstate::nakamoto::staging_blocks::{
-    nakamoto_staging_block_columns, nakamoto_staging_blocks_membership_predicate,
-    nakamoto_staging_blocks_source_select, nakamoto_staging_copy_db_version,
+    clone_schemas_from_source, copied_rows, execute_copy_specs, with_offline_write_session,
+    TableCopySpec,
 };
 use crate::chainstate::stacks::db::StacksChainState;
 use crate::chainstate::stacks::index::Error;
@@ -330,6 +326,24 @@ pub fn copy_epoch2_block_files(
     Ok(stats)
 }
 
+/// Copy specs for the Nakamoto staging DB.
+fn nakamoto_copy_specs() -> Vec<TableCopySpec> {
+    vec![
+        TableCopySpec {
+            table: "db_version",
+            source_sql: "SELECT * FROM src.db_version".into(),
+        },
+        TableCopySpec {
+            table: "nakamoto_staging_blocks",
+            source_sql: "SELECT s.* FROM src.nakamoto_staging_blocks s \
+                 WHERE s.orphaned = 0 \
+                 AND s.index_block_hash IN \
+                 (SELECT index_block_hash FROM idx.nakamoto_block_headers)"
+                .into(),
+        },
+    ]
+}
+
 /// Create and populate `nakamoto.sqlite` with canonical `nakamoto_staging_blocks` rows.
 ///
 /// The retained set is bounded entirely by `squashed_index_path`: a non-orphan row is kept
@@ -348,42 +362,20 @@ pub fn copy_nakamoto_staging_blocks(
         |conn| {
             clone_schemas_from_source(conn, NAKAMOTO_STAGING_TABLES)?;
 
-            nakamoto_staging_copy_db_version(conn)
-                .map_err(|e| Error::CorruptionError(format!("cannot copy db_version: {e}")))?;
+            let results = execute_copy_specs(conn, &nakamoto_copy_specs())?;
 
-            let membership = nakamoto_staging_blocks_membership_predicate("s");
-
-            // The membership filter also drops orphans: an in-index block should
-            // never be orphaned, but `set_block_orphaned` cascades via
-            // parent_block_id, so the filter keeps non-canonical rows out.
-            with_indexes_dropped(conn, "nakamoto_staging_blocks", |conn| {
-                conn.execute(
-                    &format!(
-                        "INSERT INTO nakamoto_staging_blocks ({}) \
-                         {} \
-                         WHERE {membership}",
-                        nakamoto_staging_block_columns(),
-                        nakamoto_staging_blocks_source_select("s")
-                    ),
-                    [],
-                )
-                .map_err(Error::SQLError)?;
-                Ok(())
-            })?;
-
-            let stats: NakamotoBlockCopyStats = conn
+            let total_blob_bytes: i64 = conn
                 .query_row(
-                    "SELECT COUNT(*), COALESCE(SUM(LENGTH(data)), 0) FROM nakamoto_staging_blocks",
+                    "SELECT COALESCE(SUM(LENGTH(data)), 0) FROM nakamoto_staging_blocks",
                     [],
-                    |row| {
-                        Ok(NakamotoBlockCopyStats {
-                            rows_copied: row.get::<_, i64>(0)? as u64,
-                            total_blob_bytes: row.get::<_, i64>(1)? as u64,
-                        })
-                    },
+                    |row| row.get(0),
                 )
                 .map_err(Error::SQLError)?;
-            Ok(stats)
+
+            Ok(NakamotoBlockCopyStats {
+                rows_copied: copied_rows(&results, "nakamoto_staging_blocks"),
+                total_blob_bytes: total_blob_bytes as u64,
+            })
         },
     )
 }
