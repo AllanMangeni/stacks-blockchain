@@ -66,25 +66,21 @@ fn get_confirmed_microblock_stream(
     parent_ibh: &StacksBlockId,
     max_seq: u32,
 ) -> Result<Vec<(u32, BlockHeaderHash)>, Error> {
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT sequence, microblock_hash \
+    let mut stmt = conn.prepare_cached(
+        "SELECT sequence, microblock_hash \
              FROM src.staging_microblocks \
              WHERE index_block_hash = ?1 \
                AND sequence <= ?2 \
                AND processed = 1 \
                AND orphaned = 0 \
              ORDER BY sequence ASC",
-        )
-        .map_err(Error::SQLError)?;
+    )?;
 
     let stream = stmt
         .query_map(params![parent_ibh, max_seq], |row| {
             Ok((row.get::<_, u32>(0)?, row.get::<_, BlockHeaderHash>(1)?))
-        })
-        .map_err(Error::SQLError)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(Error::SQLError)?;
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(stream)
 }
@@ -101,13 +97,11 @@ fn derive_confirmed_microblock_set(
     ),
     Error,
 > {
-    let mut stmt = conn
-        .prepare(
-            "SELECT parent_consensus_hash, parent_anchored_block_hash, \
+    let mut stmt = conn.prepare(
+        "SELECT parent_consensus_hash, parent_anchored_block_hash, \
                     parent_microblock_hash, parent_microblock_seq \
              FROM staging_blocks",
-        )
-        .map_err(Error::SQLError)?;
+    )?;
 
     let children: Vec<(ConsensusHash, BlockHeaderHash, BlockHeaderHash, u32)> = stmt
         .query_map([], |row| {
@@ -117,10 +111,8 @@ fn derive_confirmed_microblock_set(
                 row.get::<_, BlockHeaderHash>(2)?,
                 row.get::<_, u32>(3)?,
             ))
-        })
-        .map_err(Error::SQLError)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(Error::SQLError)?;
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
     drop(stmt);
 
     let mut selected_hashes: HashSet<BlockHeaderHash> = HashSet::new();
@@ -178,23 +170,19 @@ fn populate_microblock_temp_tables(
     conn.execute_batch(
         "CREATE TEMP TABLE selected_microblocks (hash TEXT NOT NULL PRIMARY KEY); \
          CREATE TEMP TABLE selected_parents (ibh TEXT NOT NULL PRIMARY KEY);",
-    )
-    .map_err(Error::SQLError)?;
+    )?;
 
     {
-        let mut ins_hash = conn
-            .prepare("INSERT INTO temp.selected_microblocks (hash) VALUES (?1)")
-            .map_err(Error::SQLError)?;
+        let mut ins_hash =
+            conn.prepare("INSERT INTO temp.selected_microblocks (hash) VALUES (?1)")?;
         for h in selected_hashes {
-            ins_hash.execute(params![h]).map_err(Error::SQLError)?;
+            ins_hash.execute(params![h])?;
         }
     }
     {
-        let mut ins_parent = conn
-            .prepare("INSERT INTO temp.selected_parents (ibh) VALUES (?1)")
-            .map_err(Error::SQLError)?;
+        let mut ins_parent = conn.prepare("INSERT INTO temp.selected_parents (ibh) VALUES (?1)")?;
         for p in selected_parents {
-            ins_parent.execute(params![p]).map_err(Error::SQLError)?;
+            ins_parent.execute(params![p])?;
         }
     }
 
@@ -222,7 +210,9 @@ fn microblock_copy_specs() -> Vec<TableCopySpec> {
     ]
 }
 
-/// Copy confirmed canonical epoch-2 microblock streams.
+/// Copy confirmed canonical epoch-2 microblock streams into the squashed index.
+///
+/// `dst_index_path` is the squashed `index.sqlite` already created by the index copy step.
 pub fn copy_confirmed_epoch2_microblocks(
     src_index_path: &str,
     dst_index_path: &str,
@@ -236,45 +226,42 @@ pub fn copy_confirmed_epoch2_microblocks(
             let results = execute_copy_specs(conn, &microblock_copy_specs())?;
             stats.microblock_rows_copied = copied_rows(&results, "staging_microblocks");
 
-            stats.microblock_bytes_copied = conn
-                .query_row(
-                    "SELECT COALESCE(SUM(LENGTH(block_data)), 0) FROM staging_microblocks_data",
-                    [],
-                    |row| row.get(0),
-                )
-                .map_err(Error::SQLError)?;
+            stats.microblock_bytes_copied = conn.query_row(
+                "SELECT COALESCE(SUM(LENGTH(block_data)), 0) FROM staging_microblocks_data",
+                [],
+                |row| row.get(0),
+            )?;
         }
 
         Ok(stats)
     })
 }
 
-/// Copy canonical epoch 2.x block flat files.
+/// Copy canonical epoch 2.x block flat files into `dst_blocks_dir`.
+///
+/// Reads the canonical block set from `squashed_index_path` and copies each
+/// block's flat file from `src_blocks_dir`; `dst_blocks_dir` is created by the
+/// caller. A canonical block whose source file is missing is source corruption.
 pub fn copy_epoch2_block_files(
     squashed_index_path: &str,
     src_blocks_dir: &str,
     dst_blocks_dir: &str,
 ) -> Result<Epoch2BlockFileCopyStats, Error> {
-    let conn = sqlite_open(squashed_index_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)
-        .map_err(Error::SQLError)?;
+    let conn = sqlite_open(squashed_index_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)?;
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT index_block_hash, block_height \
+    let mut stmt = conn.prepare(
+        "SELECT index_block_hash, block_height \
              FROM block_headers ORDER BY block_height",
-        )
-        .map_err(Error::SQLError)?;
+    )?;
 
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, StacksBlockId>(0)?, row.get::<_, u64>(1)?))
-        })
-        .map_err(Error::SQLError)?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, StacksBlockId>(0)?, row.get::<_, u64>(1)?))
+    })?;
 
     let mut stats = Epoch2BlockFileCopyStats::default();
 
     for row in rows {
-        let (index_block_hash, block_height) = row.map_err(Error::SQLError)?;
+        let (index_block_hash, block_height) = row?;
         if block_height == 0 {
             stats.genesis_skipped += 1;
             continue;
@@ -293,21 +280,10 @@ pub fn copy_epoch2_block_files(
         }
 
         if let Some(parent) = dst_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                Error::CorruptionError(format!(
-                    "Failed to create directory {}: {e:?}",
-                    parent.display(),
-                ))
-            })?;
+            fs::create_dir_all(parent)?;
         }
 
-        let bytes_copied = fs::copy(&src_path, &dst_path).map_err(|e| {
-            Error::CorruptionError(format!(
-                "Failed to copy block file {} -> {}: {e:?}",
-                src_path.display(),
-                dst_path.display(),
-            ))
-        })?;
+        let bytes_copied = fs::copy(&src_path, &dst_path)?;
 
         stats.files_copied += 1;
         stats.total_bytes += bytes_copied;
@@ -360,6 +336,9 @@ pub fn copy_nakamoto_staging_blocks(
     if Path::new(dst_nakamoto_path).exists() {
         return Err(Error::DestinationExists(dst_nakamoto_path.to_string()));
     }
+    if let Some(parent) = Path::new(dst_nakamoto_path).parent() {
+        fs::create_dir_all(parent)?;
+    }
 
     with_offline_write_session(
         dst_nakamoto_path,
@@ -370,13 +349,11 @@ pub fn copy_nakamoto_staging_blocks(
 
             let results = execute_copy_specs(conn, &nakamoto_copy_specs())?;
 
-            let total_blob_bytes: i64 = conn
-                .query_row(
-                    "SELECT COALESCE(SUM(LENGTH(data)), 0) FROM nakamoto_staging_blocks",
-                    [],
-                    |row| row.get(0),
-                )
-                .map_err(Error::SQLError)?;
+            let total_blob_bytes: i64 = conn.query_row(
+                "SELECT COALESCE(SUM(LENGTH(data)), 0) FROM nakamoto_staging_blocks",
+                [],
+                |row| row.get(0),
+            )?;
 
             Ok(NakamotoBlockCopyStats {
                 rows_copied: copied_rows(&results, "nakamoto_staging_blocks"),
