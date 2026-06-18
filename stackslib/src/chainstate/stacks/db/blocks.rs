@@ -425,8 +425,9 @@ impl StacksChainState {
         blocks_dir: &str,
         index_block_hash: &StacksBlockId,
     ) -> Result<String, Error> {
-        let block_path = PathBuf::from(blocks_dir)
-            .join(StacksChainState::index_block_hash_to_rel_path(index_block_hash));
+        let block_path = PathBuf::from(blocks_dir).join(
+            StacksChainState::index_block_hash_to_rel_path(index_block_hash),
+        );
 
         let blocks_path_str = block_path
             .to_str()
@@ -677,8 +678,9 @@ impl StacksChainState {
             let random_bytes = thread_rng().gen::<[u8; 8]>();
             let random_bytes_str = to_hex(&random_bytes);
             let index_block_hash = StacksBlockId::new(consensus_hash, block_header_hash);
-            let mut invalid_path = PathBuf::from(blocks_dir)
-                .join(StacksChainState::index_block_hash_to_rel_path(&index_block_hash));
+            let mut invalid_path = PathBuf::from(blocks_dir).join(
+                StacksChainState::index_block_hash_to_rel_path(&index_block_hash),
+            );
             invalid_path
                 .file_name()
                 .expect("FATAL: index block path did not have file name");
