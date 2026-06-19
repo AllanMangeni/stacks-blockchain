@@ -20,7 +20,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use stacks_common::types::chainstate::StacksBlockId;
 
 use super::common::{
-    clone_schemas_from_source, copied_rows, execute_copy_specs, unclassified_tables,
+    assert_source_schema, clone_schemas_from_source, copied_rows, execute_copy_specs,
     with_offline_write_session, TableCopySpec, MARF_INFRA_TABLES,
 };
 use super::fork_storage::{collect_canonical_leaf_hashes, copy_canonical_fork_storage};
@@ -76,23 +76,15 @@ fn known_index_tables() -> Vec<&'static str> {
         .collect()
 }
 
-/// Refuse to snapshot a source index DB with tables the hardcoded copy lists
-/// don't recognize: the snapshot would silently omit them and a node would
-/// recreate them empty. Runs on the real source DB, so unlike the compile-time
-/// `test_no_unclassified_source_tables` it also catches tables added outside
-/// the migration path (a newer node, an ad-hoc `CREATE TABLE`).
+/// The index snapshot's source-schema guard (see [`assert_source_schema`]);
+/// `test_no_unclassified_source_tables` runs it against a fresh schema.
 pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
-    let unknown = unclassified_tables(src_conn, &known_index_tables());
-    if !unknown.is_empty() {
-        return Err(Error::CorruptionError(format!(
-            "source index DB has unrecognized table(s) {unknown:?}: the snapshot would omit them \
-             and a node booting from it would recreate them empty. The tool may be older than the \
-             DB's schema (upgrade it to match the node); if this is a newly added table, classify \
-             each in COPIED_TABLES (to copy) or SCHEMA_ONLY_TABLES (to schema-clone only) in \
-             snapshot/index.rs"
-        )));
-    }
-    Ok(())
+    assert_source_schema(
+        src_conn,
+        &known_index_tables(),
+        "index DB",
+        "COPIED_TABLES (to copy) or SCHEMA_ONLY_TABLES (to schema-clone only) in snapshot/index.rs",
+    )
 }
 
 /// Row-count statistics returned by [`copy_index_side_tables`].

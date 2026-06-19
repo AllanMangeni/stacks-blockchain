@@ -279,6 +279,30 @@ pub(super) fn unclassified_tables(conn: &Connection, known: &[&str]) -> Vec<Stri
         .collect()
 }
 
+/// Reject snapshotting a source DB whose schema has tables `known` doesn't
+/// cover: the snapshot would omit them and a node booting from it would recreate
+/// them empty. Runs on the real source DB, so it also catches tables that reached
+/// disk outside the tool's migration path (a newer node, an ad-hoc `CREATE
+/// TABLE`) that a compile-time list check would miss. `db_label` names the DB in
+/// the error; `classify_hint` says where to classify a newly added table.
+pub(super) fn assert_source_schema(
+    src_conn: &Connection,
+    known: &[&str],
+    db_label: &str,
+    classify_hint: &str,
+) -> Result<(), Error> {
+    let unknown = unclassified_tables(src_conn, known);
+    if !unknown.is_empty() {
+        return Err(Error::CorruptionError(format!(
+            "source {db_label} has unrecognized table(s) {unknown:?}: the snapshot would omit them \
+             and a node booting from it would recreate them empty. The tool may be older than the \
+             DB's schema (upgrade it to match the node); if this is a newly added table, classify \
+             each in {classify_hint}"
+        )));
+    }
+    Ok(())
+}
+
 /// MARF / Clarity-store infrastructure tables. They live in every MARF-backed
 /// source DB and are created by the squash engine (`MARF::squash_to_path`) or
 /// store init — not by a side-table copy — so the drift guards treat them as

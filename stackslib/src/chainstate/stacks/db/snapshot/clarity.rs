@@ -23,7 +23,7 @@ use rusqlite::{Connection, OpenFlags};
 use stacks_common::types::chainstate::StacksBlockId;
 
 use super::common::{
-    clone_schemas_from_source, unclassified_tables, with_indexes_dropped,
+    assert_source_schema, clone_schemas_from_source, with_indexes_dropped,
     with_offline_write_session, MARF_INFRA_TABLES,
 };
 use super::fork_storage::{collect_leaf_value_hashes, copy_leaf_referenced_rows};
@@ -46,22 +46,15 @@ fn known_clarity_tables() -> Vec<&'static str> {
         .collect()
 }
 
-/// Refuse to snapshot a source clarity DB with tables the hardcoded copy lists
-/// don't recognize: the snapshot would silently omit them and a node would
-/// recreate them empty. Runs on the real source DB, so unlike the compile-time
-/// `test_no_unclassified_clarity_source_tables` it also catches tables added outside
-/// the migration path (a newer node, an ad-hoc `CREATE TABLE`).
+/// The clarity snapshot's source-schema guard (see [`assert_source_schema`]);
+/// `test_no_unclassified_clarity_source_tables` runs it against a fresh schema.
 pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
-    let unknown = unclassified_tables(src_conn, &known_clarity_tables());
-    if !unknown.is_empty() {
-        return Err(Error::CorruptionError(format!(
-            "source clarity DB has unrecognized table(s) {unknown:?}: the snapshot would omit \
-             them and a node booting from it would recreate them empty. The tool may be older \
-             than the DB's schema (upgrade it to match the node); if this is a newly added \
-             table, classify each in CLARITY_SIDE_TABLES (to copy) in snapshot/clarity.rs"
-        )));
-    }
-    Ok(())
+    assert_source_schema(
+        src_conn,
+        &known_clarity_tables(),
+        "clarity DB",
+        "CLARITY_SIDE_TABLES (to copy) in snapshot/clarity.rs",
+    )
 }
 
 /// Copy Clarity side-storage tables (`data_table`, `metadata_table`) from a
