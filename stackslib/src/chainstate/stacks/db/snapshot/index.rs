@@ -16,16 +16,17 @@
 use std::collections::HashSet;
 use std::time::Instant;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use stacks_common::types::chainstate::StacksBlockId;
 
 use super::common::{
-    clone_schemas_from_source, copied_rows, execute_copy_specs, with_offline_write_session,
-    TableCopySpec,
+    clone_schemas_from_source, copied_rows, execute_copy_specs, unclassified_tables,
+    with_offline_write_session, TableCopySpec, MARF_INFRA_TABLES,
 };
 use super::fork_storage::{collect_canonical_leaf_hashes, copy_canonical_fork_storage};
 use crate::burnchains::PoxConstants;
 use crate::chainstate::stacks::index::{trie_sql, Error, MARFValue};
+use crate::util_lib::db::sqlite_open;
 
 /// Tables copied (with canonical-filtered content) into the squashed index DB.
 pub(crate) const COPIED_TABLES: &[&str] = &[
@@ -61,6 +62,37 @@ fn all_required_tables() -> Vec<&'static str> {
         .chain(SCHEMA_ONLY_TABLES)
         .copied()
         .collect()
+}
+
+/// Every table the index snapshot accounts for: content-copied ([`COPIED_TABLES`]),
+/// schema-cloned but unpopulated ([`SCHEMA_ONLY_TABLES`]), or owned by the MARF
+/// squash itself ([`MARF_INFRA_TABLES`]).
+fn known_index_tables() -> Vec<&'static str> {
+    COPIED_TABLES
+        .iter()
+        .chain(SCHEMA_ONLY_TABLES)
+        .chain(MARF_INFRA_TABLES)
+        .copied()
+        .collect()
+}
+
+/// Refuse to snapshot a source index DB with tables the hardcoded copy lists
+/// don't recognize: the snapshot would silently omit them and a node would
+/// recreate them empty. Runs on the real source DB, so unlike the compile-time
+/// `test_no_unclassified_source_tables` it also catches tables added outside
+/// the migration path (a newer node, an ad-hoc `CREATE TABLE`).
+pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
+    let unknown = unclassified_tables(src_conn, &known_index_tables());
+    if !unknown.is_empty() {
+        return Err(Error::CorruptionError(format!(
+            "source index DB has unrecognized table(s) {unknown:?}: the snapshot would omit them \
+             and a node booting from it would recreate them empty. The tool may be older than the \
+             DB's schema (upgrade it to match the node); if this is a newly added table, classify \
+             each in COPIED_TABLES (to copy) or SCHEMA_ONLY_TABLES (to schema-clone only) in \
+             snapshot/index.rs"
+        )));
+    }
+    Ok(())
 }
 
 /// Row-count statistics returned by [`copy_index_side_tables`].
@@ -262,6 +294,11 @@ pub fn copy_index_side_tables(
     first_burn_height: u64,
     reward_cycle_len: u64,
 ) -> Result<IndexSideTableStats, Error> {
+    // Reject an unrecognized source schema before any destination work.
+    let src_conn = sqlite_open(src_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)?;
+    assert_source_tables_classified(&src_conn)?;
+    drop(src_conn);
+
     let leaf_hashes = collect_canonical_leaf_hashes::<StacksBlockId>(dst_path)?;
 
     with_offline_write_session(dst_path, &[("src", src_path)], "", |conn| {

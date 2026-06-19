@@ -19,8 +19,8 @@ use rusqlite::{params, Connection, OpenFlags};
 use stacks_common::types::chainstate::SortitionId;
 
 use super::common::{
-    clone_schemas_from_source, copied_rows, execute_copy_specs, with_offline_write_session,
-    TableCopySpec,
+    clone_schemas_from_source, copied_rows, execute_copy_specs, unclassified_tables,
+    with_offline_write_session, TableCopySpec, MARF_INFRA_TABLES,
 };
 use super::fork_storage::{collect_canonical_leaf_hashes, copy_canonical_fork_storage};
 use crate::chainstate::burn::db::sortdb::SortitionDB;
@@ -46,6 +46,42 @@ pub(super) const REQUIRED_TABLES: &[&str] = &[
     "preprocessed_reward_sets",
     "epochs",
 ];
+
+/// Tables that may appear in a source sortition DB but are deliberately not
+/// copied. `snapshot_burn_distributions` is written only under the `testing`
+/// feature (`SortitionDBTx::store_burn_distribution`), never in production.
+pub(super) const IGNORED_TABLES: &[&str] = &["snapshot_burn_distributions"];
+
+/// Every table the sortition snapshot accounts for: content-copied
+/// ([`REQUIRED_TABLES`]), owned by the MARF squash itself
+/// ([`MARF_INFRA_TABLES`]), or deliberately skipped ([`IGNORED_TABLES`]).
+fn known_sortition_tables() -> Vec<&'static str> {
+    REQUIRED_TABLES
+        .iter()
+        .chain(MARF_INFRA_TABLES)
+        .chain(IGNORED_TABLES)
+        .copied()
+        .collect()
+}
+
+/// Refuse to snapshot a source sortition DB with tables the hardcoded copy
+/// lists don't recognize: the snapshot would silently omit them and a node
+/// would recreate them empty. Runs on the real source DB, so unlike the
+/// compile-time `test_no_unclassified_sortition_tables` it also catches tables
+/// added outside the migration path.
+pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
+    let unknown = unclassified_tables(src_conn, &known_sortition_tables());
+    if !unknown.is_empty() {
+        return Err(Error::CorruptionError(format!(
+            "source sortition DB has unrecognized table(s) {unknown:?}: the snapshot would omit \
+             them and a node booting from it would recreate them empty. The tool may be older than \
+             the DB's schema (upgrade it to match the node); if this is a newly added table, \
+             classify each in REQUIRED_TABLES (to copy) or IGNORED_TABLES (to skip) in \
+             snapshot/sortition.rs"
+        )));
+    }
+    Ok(())
+}
 
 /// Row-count statistics returned by [`copy_sortition_side_tables`].
 #[derive(Debug, Clone)]
@@ -140,7 +176,12 @@ fn validate_tip_boundary(boundary: Option<&SortitionTipCopyBoundary>) -> Result<
 /// - `sortition_id` filtered
 /// - `burn_header_hash` filtered
 /// - full-copy
-fn sortition_copy_specs(boundary: Option<&SortitionTipCopyBoundary>) -> Vec<TableCopySpec> {
+///
+/// The set of tables is independent of `boundary`; the boundary only rewrites
+/// the `stacks_chain_tips*` source SQL.
+pub(super) fn sortition_copy_specs(
+    boundary: Option<&SortitionTipCopyBoundary>,
+) -> Vec<TableCopySpec> {
     let sid = "SELECT sortition_id FROM canonical_sortitions";
     let bhh = "SELECT burn_header_hash FROM canonical_burn_hashes";
 
@@ -255,11 +296,13 @@ pub fn copy_sortition_side_tables_with_boundary(
     stacks_boundary: Option<&SortitionTipCopyBoundary>,
 ) -> Result<SortitionSideTableStats, Error> {
     validate_tip_boundary(stacks_boundary)?;
+    // Read-only source handle for the sortdb-owned readers; the session below
+    // still attaches src for the copy specs.
+    let src_conn = sqlite_open(src_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)?;
+    // Reject an unrecognized source schema before any destination work.
+    assert_source_tables_classified(&src_conn)?;
     // Walk the squashed trie before opening dst R/W.
     let leaf_hashes = collect_canonical_leaf_hashes::<SortitionId>(dst_path)?;
-    // Read-only source handle for the sortdb-owned readers; the session
-    // below still attaches src for the copy specs.
-    let src_conn = sqlite_open(src_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)?;
 
     with_offline_write_session(dst_path, &[("src", src_path)], "", |conn| {
         clone_schemas_from_source(conn, REQUIRED_TABLES)?;

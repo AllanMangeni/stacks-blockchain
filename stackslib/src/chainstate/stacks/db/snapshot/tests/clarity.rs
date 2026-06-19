@@ -24,12 +24,11 @@ use stacks_common::types::chainstate::{StacksBlockId, TrieHash};
 use stacks_common::util::hash::Sha512Trunc256Sum;
 use tempfile::tempdir;
 
-use super::super::clarity::CLARITY_SIDE_TABLES;
-use super::super::common::{unclassified_tables, MARF_INFRA_TABLES};
+use super::super::clarity::assert_source_tables_classified;
 use super::super::copy_clarity_side_tables;
 use crate::chainstate::stacks::index::marf::{MARFOpenOpts, MARF};
 use crate::chainstate::stacks::index::storage::TrieHashCalculationMode;
-use crate::chainstate::stacks::index::{ClarityMarfTrieId as _, MARFValue};
+use crate::chainstate::stacks::index::{ClarityMarfTrieId as _, Error, MARFValue};
 use crate::clarity_vm::clarity::ClarityMarfStoreTransaction as _;
 use crate::clarity_vm::database::marf::MarfedKV;
 
@@ -495,25 +494,48 @@ fn test_copy_clarity_side_tables_with_double_colon_metadata_keys() {
     }
 }
 
+/// Drift guard for the Clarity MARF DB: every table must be either copied by
+/// `copy_clarity_side_tables` (data_table, metadata_table) or owned by the MARF
+/// trie itself (recreated by `MARF::squash_to_path`). Runs the exact production
+/// guard against a freshly-built schema, so the test and the runtime check
+/// cannot drift apart.
 #[test]
 fn test_no_unclassified_clarity_source_tables() {
-    // Drift guard for the Clarity MARF DB: every table must be either copied by
-    // `copy_clarity_side_tables` (data_table, metadata_table) or owned by the
-    // MARF trie itself (copied by `MARF::squash_to_path`).
     let dir = tempdir().unwrap();
     let src_dir = dir.path().join("src");
     build_clarity_marf(&src_dir, 2, "test-contract", "");
     let conn = rusqlite::Connection::open(clarity_marf_db_path(&src_dir)).unwrap();
 
-    let known: Vec<&str> = CLARITY_SIDE_TABLES
-        .iter()
-        .copied()
-        .chain(MARF_INFRA_TABLES.iter().copied())
-        .collect();
-    let extra = unclassified_tables(&conn, &known);
+    assert_source_tables_classified(&conn)
+        .expect("fresh production Clarity schema must be fully classified");
+}
+
+/// A source table the copy lists don't classify is rejected before any
+/// destination is produced — the runtime complement to the drift test.
+#[test]
+fn test_unclassified_source_table_is_rejected() {
+    let dir = tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    build_clarity_marf(&src_dir, 2, "test-contract", "");
+    let src_db = clarity_marf_db_path(&src_dir);
+
+    let conn = rusqlite::Connection::open(&src_db).unwrap();
+    conn.execute_batch("CREATE TABLE surprise_table (x INTEGER)")
+        .unwrap();
+    drop(conn);
+
+    let dst_db = dir.path().join("squashed").join("marf.sqlite");
+    let err = copy_clarity_side_tables(src_db.to_str().unwrap(), dst_db.to_str().unwrap())
+        .expect_err("unclassified source table must be rejected");
+    match err {
+        Error::CorruptionError(msg) => assert!(
+            msg.contains("surprise_table"),
+            "error should name the offending table, got: {msg}"
+        ),
+        other => panic!("expected CorruptionError, got {other:?}"),
+    }
     assert!(
-        extra.is_empty(),
-        "unclassified Clarity source table(s) {extra:?}: handle each in \
-         copy_clarity_side_tables (chainstate/stacks/db/snapshot/clarity.rs)"
+        !dst_db.exists(),
+        "no destination should be produced when the source is rejected"
     );
 }

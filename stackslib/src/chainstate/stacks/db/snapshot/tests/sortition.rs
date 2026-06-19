@@ -15,6 +15,7 @@
 
 //! Sortition side-table copy tests.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use rstest::rstest;
@@ -24,9 +25,9 @@ use stacks_common::types::chainstate::{
 };
 use tempfile::tempdir;
 
-use super::super::common::{unclassified_tables, MARF_INFRA_TABLES};
 use super::super::sortition::{
-    copy_sortition_side_tables, copy_sortition_side_tables_with_boundary, SortitionTipCopyBoundary,
+    assert_source_tables_classified, copy_sortition_side_tables,
+    copy_sortition_side_tables_with_boundary, sortition_copy_specs, SortitionTipCopyBoundary,
     REQUIRED_TABLES,
 };
 use super::{hex_id, label_block_id};
@@ -652,20 +653,61 @@ fn test_sortition_copy_with_production_seeded_source() {
 
 /// Drift guard: every table the sortition migrations create must be
 /// classified, so a future migration can't silently drop one from the copy.
+/// Runs the exact production guard against a freshly-migrated schema, so the
+/// test and the runtime check cannot drift apart.
 #[test]
 fn test_no_unclassified_sortition_tables() {
     let dir = tempdir().unwrap();
     let (conn, _src_path) = create_sortition_source_db(dir.path());
-    let known: Vec<&str> = REQUIRED_TABLES
-        .iter()
-        .chain(MARF_INFRA_TABLES.iter())
-        .chain(["snapshot_burn_distributions"].iter())
-        .copied()
-        .collect();
-    let extra = unclassified_tables(&conn, &known);
+    assert_source_tables_classified(&conn)
+        .expect("fresh production sortition schema must be fully classified");
+}
+
+/// Every table whose schema is cloned ([`REQUIRED_TABLES`]) must also have a
+/// row-copy spec, and vice versa. Without this, a table could pass the
+/// classification guard and be cloned into the dst yet never populated —
+/// recreated-empty inconsistency one level below the unclassified-table check.
+#[test]
+fn test_sortition_copy_specs_match_required_tables() {
+    let spec_tables: Vec<&str> = sortition_copy_specs(None).iter().map(|s| s.table).collect();
+    let spec_set: HashSet<&str> = spec_tables.iter().copied().collect();
+    assert_eq!(
+        spec_tables.len(),
+        spec_set.len(),
+        "duplicate table in sortition_copy_specs"
+    );
+    let required_set: HashSet<&str> = REQUIRED_TABLES.iter().copied().collect();
+    assert_eq!(
+        spec_set, required_set,
+        "every REQUIRED_TABLES entry must have exactly one copy spec (and vice versa); \
+         a cloned-but-uncopied table would be present-but-empty in the squash"
+    );
+}
+
+/// Runtime guard: a source DB carrying a table the copy lists don't classify
+/// is rejected up front, naming the offending table, before any destination is
+/// produced. This is the defense-in-depth complement to the compile-time
+/// `test_no_unclassified_sortition_tables` guard.
+#[test]
+fn test_unclassified_source_table_is_rejected() {
+    let dir = tempdir().unwrap();
+    let (conn, src_path) = create_sortition_source_db(dir.path());
+    conn.execute_batch("CREATE TABLE surprise_table (x INTEGER)")
+        .unwrap();
+    drop(conn);
+
+    let dst_path = dir.path().join("dst_sort.sqlite");
+    let err = copy_sortition_side_tables(src_path.to_str().unwrap(), dst_path.to_str().unwrap())
+        .expect_err("unclassified source table must be rejected");
+    match err {
+        Error::CorruptionError(msg) => assert!(
+            msg.contains("surprise_table"),
+            "error should name the offending table, got: {msg}"
+        ),
+        other => panic!("expected CorruptionError, got {other:?}"),
+    }
     assert!(
-        extra.is_empty(),
-        "unclassified sortition table(s) {extra:?}: classify each in REQUIRED_TABLES \
-         (snapshot/sortition.rs)"
+        !dst_path.exists(),
+        "no destination should be produced when the source is rejected"
     );
 }
