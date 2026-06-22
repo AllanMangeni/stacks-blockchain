@@ -271,25 +271,6 @@ pub trait TransactionConnection: ClarityConnection {
     where
         F: FnOnce(&mut AnalysisDatabase, LimitedCostTracker) -> (LimitedCostTracker, R);
 
-    /// Analyze a provided smart contract, but do not write the analysis to the AnalysisDatabase.
-    ///
-    /// The analysis (type-checking) phase runs with no wall-clock deadline. On the
-    /// non-consensus voting paths (mining / block-proposal validation) prefer
-    /// [`Self::analyze_smart_contract_with_deadline`] to bound the analysis time.
-    fn analyze_smart_contract(
-        &mut self,
-        identifier: &QualifiedContractIdentifier,
-        clarity_version: ClarityVersion,
-        contract_content: &str,
-    ) -> Result<(ContractAST, ContractAnalysis), ClarityError> {
-        self.analyze_smart_contract_with_deadline(
-            identifier,
-            clarity_version,
-            contract_content,
-            None,
-        )
-    }
-
     /// Analyze a provided smart contract with an optional wall-clock deadline on the
     /// type-checking phase, but do not write the analysis to the AnalysisDatabase.
     ///
@@ -297,7 +278,7 @@ pub trait TransactionConnection: ClarityConnection {
     /// (block assembly / block-proposal validation) and `None` on deterministic
     /// replay/commit, so consensus stays deterministic. When the deadline elapses
     /// the analysis aborts with [`ClarityError::AnalysisTimeExpired`].
-    fn analyze_smart_contract_with_deadline(
+    fn analyze_smart_contract(
         &mut self,
         identifier: &QualifiedContractIdentifier,
         clarity_version: ClarityVersion,

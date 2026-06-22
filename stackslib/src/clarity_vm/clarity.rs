@@ -526,6 +526,7 @@ impl ClarityInstance {
                     &boot_code_id("costs", use_mainnet),
                     ClarityVersion::Clarity1,
                     BOOT_CODE_COSTS,
+                    None,
                 )
                 .unwrap();
             clarity_db
@@ -547,6 +548,7 @@ impl ClarityInstance {
                     &boot_code_id("cost-voting", use_mainnet),
                     ClarityVersion::Clarity1,
                     &*BOOT_CODE_COST_VOTING,
+                    None,
                 )
                 .unwrap();
             clarity_db
@@ -572,6 +574,7 @@ impl ClarityInstance {
                     &boot_code_id("pox", use_mainnet),
                     ClarityVersion::Clarity1,
                     &*BOOT_CODE_POX_TESTNET,
+                    None,
                 )
                 .unwrap();
             clarity_db
@@ -624,6 +627,7 @@ impl ClarityInstance {
                     &boot_code_id("costs-2", use_mainnet),
                     ClarityVersion::Clarity1,
                     BOOT_CODE_COSTS_2,
+                    None,
                 )
                 .unwrap();
             clarity_db
@@ -645,6 +649,7 @@ impl ClarityInstance {
                     &boot_code_id("costs-3", use_mainnet),
                     ClarityVersion::Clarity2,
                     BOOT_CODE_COSTS_3,
+                    None,
                 )
                 .unwrap();
             clarity_db
@@ -666,6 +671,7 @@ impl ClarityInstance {
                     &boot_code_id("pox-2", use_mainnet),
                     ClarityVersion::Clarity2,
                     &*POX_2_TESTNET_CODE,
+                    None,
                 )
                 .unwrap();
             clarity_db
@@ -2441,6 +2447,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                 })
                 .unwrap_err();
@@ -2453,6 +2460,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                 })
                 .unwrap_err();
@@ -2500,6 +2508,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 conn.initialize_smart_contract(
@@ -2553,6 +2562,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 tx.initialize_smart_contract(
@@ -2581,6 +2591,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 tx.initialize_smart_contract(
@@ -2611,6 +2622,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 assert!(format!(
@@ -2665,6 +2677,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 conn.initialize_smart_contract(
@@ -2726,6 +2739,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 conn.initialize_smart_contract(
@@ -2818,6 +2832,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 conn.initialize_smart_contract(
@@ -2949,6 +2964,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 conn.initialize_smart_contract(
@@ -3321,6 +3337,7 @@ mod tests {
                         &contract_identifier,
                         ClarityVersion::Clarity1,
                         contract,
+                        None,
                     )
                     .unwrap();
                 conn.initialize_smart_contract(
@@ -3409,6 +3426,7 @@ mod tests {
                     &contract_identifier,
                     ClarityVersion::Clarity1,
                     contract_src,
+                    None,
                 )
                 .unwrap();
             tx.initialize_smart_contract(

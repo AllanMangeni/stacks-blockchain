@@ -1388,7 +1388,7 @@ impl StacksChainState {
                 // contract-publish is dropped + blacklisted (self-heal) rather than re-mined.
                 let max_analysis_time = max_execution_time; // TEMPORARY use max_execution_time.
 
-                let analysis_resp = clarity_tx.analyze_smart_contract_with_deadline(
+                let analysis_resp = clarity_tx.analyze_smart_contract(
                     &contract_id,
                     clarity_version,
                     &contract_code_str,
