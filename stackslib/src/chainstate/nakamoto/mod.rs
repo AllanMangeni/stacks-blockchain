@@ -1684,6 +1684,28 @@ impl NakamotoBlock {
         Ok(())
     }
 
+    /// Static sanity checks on the block header that depend only on the epoch.
+    /// Verifies:
+    /// * the header version matches the epoch. The header version is fixed per
+    ///   epoch and is what gates the `problematic_txs` field in the block hash,
+    ///   so a block whose version doesn't match its epoch (ignoring the
+    ///   shadow-block high bit) is rejected.
+    pub fn validate_header_static(&self, epoch_id: StacksEpochId) -> bool {
+        let expected_version = NakamotoBlockHeader::expected_version_for_epoch(epoch_id);
+        if self.header.version & 0x7f != expected_version {
+            warn!("Block has invalid header version for epoch";
+                "consensus_hash" => %self.header.consensus_hash,
+                "stacks_block_hash" => %self.header.block_hash(),
+                "stacks_block_id" => %self.header.block_id(),
+                "epoch_id" => %epoch_id,
+                "version" => self.header.version,
+                "expected_version" => expected_version
+            );
+            return false;
+        }
+        true
+    }
+
     /// Static sanity checks on transactions.
     /// Verifies:
     /// * the block is non-empty
@@ -1743,21 +1765,6 @@ impl NakamotoBlock {
                 "stacks_block_hash" => %self.header.block_hash(),
                 "stacks_block_id" => %self.header.block_id(),
                 "epoch_id" => %epoch_id
-            );
-            return false;
-        }
-        // The header version is fixed per epoch and is what gates the
-        // `problematic_txs` field in the block hash. Reject any block whose
-        // version doesn't match its epoch (ignoring the shadow-block high bit).
-        let expected_version = NakamotoBlockHeader::expected_version_for_epoch(epoch_id);
-        if self.header.version & 0x7f != expected_version {
-            warn!("Block has invalid header version for epoch";
-                "consensus_hash" => %self.header.consensus_hash,
-                "stacks_block_hash" => %self.header.block_hash(),
-                "stacks_block_id" => %self.header.block_id(),
-                "epoch_id" => %epoch_id,
-                "version" => self.header.version,
-                "expected_version" => expected_version
             );
             return false;
         }
@@ -2338,10 +2345,11 @@ impl NakamotoChainState {
         Ok(tenure_burn_chain_tip)
     }
 
-    /// Statically validate the block's transactions against the burnchain epoch.
+    /// Statically validate the block's header and transactions against the
+    /// burnchain epoch.
     /// Return Ok(()) if they pass all static checks
     /// Return Err(..) if not.
-    fn validate_nakamoto_block_transactions_static(
+    fn validate_nakamoto_block_static(
         mainnet: bool,
         chain_id: u32,
         sortdb_conn: &Connection,
@@ -2352,18 +2360,20 @@ impl NakamotoChainState {
         // will be in epoch 2.5 (the next block will be epoch 3.0)
         let cur_epoch = SortitionDB::get_stacks_epoch(sortdb_conn, block_tenure_burn_height + 1)?
             .expect("FATAL: no epoch defined for current Stacks block");
+        let cur_epoch_id = cur_epoch.epoch_id.max(StacksEpochId::Epoch30);
 
-        // static checks on transactions all pass
-        let valid = block.validate_transactions_static(mainnet, chain_id, cur_epoch.epoch_id);
+        // static checks on the header and transactions all pass
+        let valid = block.validate_header_static(cur_epoch_id)
+            && block.validate_transactions_static(mainnet, chain_id, cur_epoch_id);
         if !valid {
             warn!(
-                "Invalid Nakamoto block, transactions failed static checks: {}/{} (epoch {})",
+                "Invalid Nakamoto block, failed static checks: {}/{} (epoch {})",
                 &block.header.consensus_hash,
                 &block.header.block_hash(),
-                cur_epoch.epoch_id
+                cur_epoch_id
             );
             return Err(ChainstateError::InvalidStacksBlock(
-                "Invalid Nakamoto block: failed static transaction checks".into(),
+                "Invalid Nakamoto block: failed static checks".into(),
             ));
         }
 
@@ -2444,7 +2454,7 @@ impl NakamotoChainState {
             return Err(e);
         }
 
-        Self::validate_nakamoto_block_transactions_static(
+        Self::validate_nakamoto_block_static(
             mainnet,
             chain_id,
             db_handle.deref(),

@@ -497,7 +497,7 @@ pub fn test_nakamoto_first_tenure_block_syntactic_validation() {
         header: shadow_header,
         txs: valid_txs.clone(),
     };
-    assert!(block.validate_transactions_static(false, 0x80000000, StacksEpochId::Epoch30));
+    assert!(block.validate_header_static(StacksEpochId::Epoch30));
 
     // Any other version is rejected, with or without the shadow-block bit. This
     // includes version 1, which was the value used before the version field was
@@ -514,7 +514,7 @@ pub fn test_nakamoto_first_tenure_block_syntactic_validation() {
             txs: valid_txs.clone(),
         };
         assert!(
-            !block.validate_transactions_static(false, 0x80000000, StacksEpochId::Epoch30),
+            !block.validate_header_static(StacksEpochId::Epoch30),
             "header version {bad_version:#x} should be rejected"
         );
     }
