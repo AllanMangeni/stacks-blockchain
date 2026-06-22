@@ -59,6 +59,7 @@ use crate::cost_estimates::{CostEstimator, FeeEstimator, PessimisticEstimator, U
 use crate::net::atlas::AtlasConfig;
 use crate::net::connection::{
     ConnectionOptions, DEFAULT_BLOCK_PROPOSAL_MAX_AGE_SECS,
+    DEFAULT_BLOCK_PROPOSAL_MAX_TX_ANALYSIS_TIME_SECS,
     DEFAULT_BLOCK_PROPOSAL_MAX_TX_EXECUTION_TIME_SECS,
     DEFAULT_BLOCK_PROPOSAL_VALIDATION_TIMEOUT_SECS,
 };
@@ -3749,6 +3750,15 @@ pub struct ConnectionOptionsFile {
     /// @units: seconds
     pub block_proposal_max_tx_execution_time_secs: Option<u64>,
 
+    /// Maximum time (in seconds) to spend on the contract-analysis
+    /// phase of a single transaction during block proposal validation.
+    /// A transaction whose analysis exceeds this on its own is
+    /// classified as problematic.
+    /// ---
+    /// @default: [`DEFAULT_BLOCK_PROPOSAL_MAX_TX_ANALYSIS_TIME_SECS`]
+    /// @units: seconds
+    pub block_proposal_max_tx_analysis_time_secs: Option<u64>,
+
     /// Maximum bytes a single transaction may allocate on the heap during
     /// block-proposal validation before it is rejected.
     /// `0` disables the limit.
@@ -3916,6 +3926,9 @@ impl ConnectionOptionsFile {
             block_proposal_max_tx_execution_time_secs: self
                 .block_proposal_max_tx_execution_time_secs
                 .unwrap_or(DEFAULT_BLOCK_PROPOSAL_MAX_TX_EXECUTION_TIME_SECS),
+            block_proposal_max_tx_analysis_time_secs: self
+                .block_proposal_max_tx_analysis_time_secs
+                .unwrap_or(DEFAULT_BLOCK_PROPOSAL_MAX_TX_ANALYSIS_TIME_SECS),
             block_proposal_max_tx_mem_bytes: self
                 .block_proposal_max_tx_mem_bytes
                 .unwrap_or(default.block_proposal_max_tx_mem_bytes),

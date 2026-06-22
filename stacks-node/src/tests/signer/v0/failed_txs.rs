@@ -465,11 +465,9 @@ fn miner_drops_contract_publish_on_analysis_time_expired() {
 }
 
 /// Certifies that when a miner proposes a block containing a contract-publish whose
-/// **type-checking (analysis) phase** exceeds the node's
-/// `block_proposal_max_tx_execution_time_secs`, the signers **reject** the proposal during
-/// validation with `ProblematicTransaction` (and `failed_txid` = the publish). This is the
-/// malicious-proposer defense: even a miner that builds the poison block (here, because its
-/// own analysis budget is unbounded) cannot get it signed.
+/// **analysis phase** exceeds the node's` block_proposal_max_tx_analysis_time_secs`,
+/// the signers **reject** the proposal during validation with `ProblematicTransaction`.
+
 #[test]
 #[ignore]
 fn signer_rejects_contract_publish_on_analysis_time_expired() {
@@ -490,13 +488,13 @@ fn signer_rejects_contract_publish_on_analysis_time_expired() {
         |node_config| {
             // Miner builds blocks with no analysis limit, so it WILL include and propose
             // the contract-publish...
-            node_config.miner.max_execution_time_secs = u64::MAX;
+            node_config.miner.max_analysis_time_secs = u64::MAX;
             // ...but the node's block-proposal validation (which the signers invoke) bounds
             // per-tx analysis to 0s, so the contract's type-checking phase is already over
             // budget => the tx is Problematic => the proposal is rejected.
             node_config
                 .connection_options
-                .block_proposal_max_tx_execution_time_secs = 0;
+                .block_proposal_max_tx_analysis_time_secs = 0;
         },
         None,
         None,
