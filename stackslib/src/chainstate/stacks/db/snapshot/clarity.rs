@@ -22,7 +22,10 @@ use clarity::vm::types::QualifiedContractIdentifier;
 use rusqlite::{Connection, OpenFlags};
 use stacks_common::types::chainstate::StacksBlockId;
 
-use super::common::{clone_schemas_from_source, with_indexes_dropped, with_offline_write_session};
+use super::common::{
+    assert_source_schema, clone_schemas_from_source, with_indexes_dropped,
+    with_offline_write_session, MARF_INFRA_TABLES,
+};
 use super::fork_storage::{collect_leaf_value_hashes, copy_leaf_referenced_rows};
 use crate::chainstate::stacks::index::marf::{MARFOpenOpts, MarfConnection as _, MARF};
 use crate::chainstate::stacks::index::storage::{TrieFileStorage, TrieHashCalculationMode};
@@ -31,6 +34,28 @@ use crate::util_lib::db::sqlite_open;
 
 /// Clarity side-storage tables copied by [`copy_clarity_side_tables`].
 pub(super) const CLARITY_SIDE_TABLES: &[&str] = &[DATA_TABLE_NAME, METADATA_TABLE_NAME];
+
+/// Every table the Clarity snapshot accounts for: side-storage copied by
+/// [`copy_clarity_side_tables`] ([`CLARITY_SIDE_TABLES`]) or owned by the MARF
+/// trie itself, recreated by [`MARF::squash_to_path`] ([`MARF_INFRA_TABLES`]).
+fn known_clarity_tables() -> Vec<&'static str> {
+    CLARITY_SIDE_TABLES
+        .iter()
+        .chain(MARF_INFRA_TABLES)
+        .copied()
+        .collect()
+}
+
+/// The clarity snapshot's source-schema guard (see [`assert_source_schema`]);
+/// `test_no_unclassified_clarity_source_tables` runs it against a fresh schema.
+pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
+    assert_source_schema(
+        src_conn,
+        &known_clarity_tables(),
+        "clarity DB",
+        "CLARITY_SIDE_TABLES (to copy) in snapshot/clarity.rs",
+    )
+}
 
 /// Copy Clarity side-storage tables (`data_table`, `metadata_table`) from a
 /// source MARF database to a squashed MARF database.
@@ -49,6 +74,10 @@ pub fn copy_clarity_side_tables(
 ) -> Result<ClaritySideTableStats, Error> {
     let total_start = Instant::now();
 
+    // Reject an unrecognized source schema before any destination work.
+    let src_conn = open_readonly_clarity_db(src_db_path)?;
+    assert_source_tables_classified(&src_conn)?;
+
     // Walk the squashed trie before opening dst for writes. we need
     // the readonly MARF view, and `marf_sqlite_open` would fight the
     // writer's lock on dst.
@@ -61,8 +90,6 @@ pub fn copy_clarity_side_tables(
     );
 
     let required_contract_ids = resolve_required_contracts(src_db_path, &squashed_tip)?;
-
-    let src_conn = open_readonly_clarity_db(src_db_path)?;
 
     let stats = with_offline_write_session(
         dst_db_path,
