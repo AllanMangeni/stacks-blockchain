@@ -260,8 +260,10 @@ pub fn copy_confirmed_epoch2_microblocks(
 /// Copy canonical epoch 2.x block flat files into `dst_blocks_dir`.
 ///
 /// Reads the canonical block set from `squashed_index_path` and copies each
-/// block's flat file from `src_blocks_dir`; `dst_blocks_dir` is created by the
-/// caller. A canonical block whose source file is missing is source corruption.
+/// block's flat file from `src_blocks_dir` into a `{hex0}/{hex1}/` shard layout
+/// under `dst_blocks_dir`, creating the shard directories (and `dst_blocks_dir`
+/// itself) as needed. A canonical block whose source file is missing is source
+/// corruption.
 pub fn copy_epoch2_block_files(
     squashed_index_path: &str,
     src_blocks_dir: &str,
