@@ -3132,6 +3132,8 @@ pub struct MinerConfig {
     ///
     /// Mining always enforces a limit; there is no way to disable it. To effectively
     /// "turn it off," set this to a value larger than any tx is expected to take.
+    ///
+    /// If execution exceeds this limit, the transaction is classified as problematic.
     /// ---
     /// @default: [`DEFAULT_MAX_EXECUTION_TIME_SECS`]
     /// @units: seconds
