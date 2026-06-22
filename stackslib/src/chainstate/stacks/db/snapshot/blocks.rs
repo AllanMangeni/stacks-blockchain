@@ -212,6 +212,10 @@ fn microblock_copy_specs() -> Vec<TableCopySpec> {
 /// Copy confirmed canonical epoch-2 microblock streams into the squashed index.
 ///
 /// `dst_index_path` is the squashed `index.sqlite` already created by the index copy step.
+/// The streams copied are bounded entirely by its `staging_blocks`: a source stream is copied
+/// only when a child block there confirms it. This function has no independent notion of the
+/// squash boundary H, so that index must already be scoped to H -- passing a full or stale
+/// index would copy post-boundary streams into the artifact.
 pub fn copy_confirmed_epoch2_microblocks(
     src_index_path: &str,
     dst_index_path: &str,
