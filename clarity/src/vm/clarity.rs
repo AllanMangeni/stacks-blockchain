@@ -322,7 +322,7 @@ pub trait TransactionConnection: ClarityConnection {
 
             // Start the analysis clock here (after AST building) so the budget bounds only
             // the analysis phase. `NoTracking` when `max_time` is `None` (replay/commit).
-            let time_tracker = TimeTracker::from_opt_max_time(max_time);
+            let time_tracker = TimeTracker::from_opt_max_duration(max_time);
             let result = analysis::run_analysis(
                 identifier,
                 &contract_ast.expressions,

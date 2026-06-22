@@ -89,14 +89,24 @@ impl TimeTracker {
     /// Build a tracker from an optional deadline. `Some(d)` starts the clock now
     /// and bounds the phase to `d`; `None` disables tracking (deterministic
     /// replay / no limit).
-    pub fn from_opt_max_time(max_time: Option<Duration>) -> Self {
-        match max_time {
-            Some(max_duration) => TimeTracker::MaxTime {
-                start_time: Instant::now(),
-                max_duration,
-            },
-            None => TimeTracker::NoTracking,
+    pub fn from_opt_max_duration(duration: Option<Duration>) -> Self {
+        match duration {
+            Some(max_duration) => Self::from_max_duration(max_duration),
+            None => Self::free(),
         }
+    }
+
+    /// Create a [`Self::MaxTime`] with the given duration and start the clock now.
+    pub fn from_max_duration(duration: Duration) -> Self {
+        TimeTracker::MaxTime {
+            start_time: Instant::now(),
+            max_duration: duration,
+        }
+    }
+
+    /// Create a [`Self::NoTracking`] tracker flavor.
+    pub fn free() -> Self {
+        TimeTracker::NoTracking
     }
 
     /// Returns `true` if a deadline is configured and has elapsed. Always
