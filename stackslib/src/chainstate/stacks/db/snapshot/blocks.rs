@@ -21,8 +21,8 @@ use rusqlite::{params, Connection, OpenFlags};
 use stacks_common::types::chainstate::{BlockHeaderHash, ConsensusHash, StacksBlockId};
 
 use super::common::{
-    clone_schemas_from_source, copied_rows, execute_copy_specs, with_offline_write_session,
-    TableCopySpec,
+    assert_source_schema, clone_schemas_from_source, copied_rows, execute_copy_specs,
+    with_offline_write_session, TableCopySpec,
 };
 use crate::chainstate::stacks::db::StacksChainState;
 use crate::chainstate::stacks::index::Error;
@@ -57,6 +57,23 @@ pub struct NakamotoBlockCopyStats {
 /// staging tables (`staging_microblocks*`) come from the index DB and are
 /// classified in `index.rs`.
 pub(super) const NAKAMOTO_STAGING_TABLES: &[&str] = &["nakamoto_staging_blocks", "db_version"];
+
+/// Every table the Nakamoto staging snapshot accounts for. nakamoto.sqlite is not
+/// MARF-backed, so unlike the other slices no MARF infra tables are exempted.
+fn known_nakamoto_staging_tables() -> Vec<&'static str> {
+    NAKAMOTO_STAGING_TABLES.to_vec()
+}
+
+/// The blocks snapshot's source-schema guard (see [`assert_source_schema`]);
+/// `test_no_unclassified_nakamoto_staging_tables` runs it against a fresh schema.
+pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
+    assert_source_schema(
+        src_conn,
+        &known_nakamoto_staging_tables(),
+        "Nakamoto staging DB",
+        "NAKAMOTO_STAGING_TABLES in snapshot/blocks.rs",
+    )
+}
 
 /// Return the `(sequence, microblock_hash)` rows of processed,
 /// non-orphaned microblocks descending from `parent_ibh`, up to `max_seq`.
@@ -303,7 +320,7 @@ pub fn copy_epoch2_block_files(
 }
 
 /// Copy specs for the Nakamoto staging DB.
-fn nakamoto_copy_specs() -> Vec<TableCopySpec> {
+pub(super) fn nakamoto_copy_specs() -> Vec<TableCopySpec> {
     vec![
         TableCopySpec {
             table: "db_version",
@@ -333,6 +350,11 @@ pub fn copy_nakamoto_staging_blocks(
     dst_nakamoto_path: &str,
     squashed_index_path: &str,
 ) -> Result<NakamotoBlockCopyStats, Error> {
+    // Reject an unrecognized source schema before any destination work.
+    let src_conn = sqlite_open(src_nakamoto_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)?;
+    assert_source_tables_classified(&src_conn)?;
+    drop(src_conn);
+
     if Path::new(dst_nakamoto_path).exists() {
         return Err(Error::DestinationExists(dst_nakamoto_path.to_string()));
     }

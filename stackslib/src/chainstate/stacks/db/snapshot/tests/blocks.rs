@@ -16,6 +16,7 @@
 //! Block-preservation copy tests: epoch-2 block files, confirmed microblock
 //! streams, and the Nakamoto staging-blocks DB.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use rusqlite::{params, Connection};
@@ -28,10 +29,10 @@ use stacks_common::util::secp256k1::{MessageSignature, Secp256k1PrivateKey, Secp
 use tempfile::tempdir;
 
 use super::super::blocks::{
-    copy_confirmed_epoch2_microblocks, copy_epoch2_block_files, copy_nakamoto_staging_blocks,
-    NAKAMOTO_STAGING_TABLES,
+    assert_source_tables_classified, copy_confirmed_epoch2_microblocks, copy_epoch2_block_files,
+    copy_nakamoto_staging_blocks, nakamoto_copy_specs, NAKAMOTO_STAGING_TABLES,
 };
-use super::super::common::{clone_schemas_from_source, unclassified_tables};
+use super::super::common::clone_schemas_from_source;
 use super::{
     create_dest_db_with_canonical_blocks, create_source_db, insert_epoch2_block_header_with_ibh,
     insert_nakamoto_header,
@@ -150,18 +151,66 @@ fn test_epoch2_block_file_missing_source_is_error() {
 
 /// Drift guard: every table the Nakamoto staging migrations create must
 /// be classified, so a future migration can't silently drop one from the
-/// copy.
+/// copy. Runs the exact production guard against a freshly-migrated schema,
+/// so the test and the runtime check cannot drift apart.
 #[test]
 fn test_no_unclassified_nakamoto_staging_tables() {
     let dir = tempdir().unwrap();
     let conn = create_source_nakamoto_db(&dir.path().join("src.sqlite"));
-    // nakamoto.sqlite is not MARF-backed, so unlike the other drift guards
-    // no MARF infra tables are exempted here.
-    let extra = unclassified_tables(&conn, NAKAMOTO_STAGING_TABLES);
+    assert_source_tables_classified(&conn)
+        .expect("fresh production Nakamoto staging schema must be fully classified");
+}
+
+/// Every cloned table (NAKAMOTO_STAGING_TABLES) must have a row-copy spec and vice versa,
+/// else it would be cloned but never populated (present-but-empty).
+#[test]
+fn test_nakamoto_copy_specs_match_staging_tables() {
+    let spec_tables: Vec<&str> = nakamoto_copy_specs().iter().map(|s| s.table).collect();
+    let spec_set: HashSet<&str> = spec_tables.iter().copied().collect();
+    assert_eq!(
+        spec_tables.len(),
+        spec_set.len(),
+        "duplicate table in nakamoto_copy_specs"
+    );
+    let staging_set: HashSet<&str> = NAKAMOTO_STAGING_TABLES.iter().copied().collect();
+    assert_eq!(
+        spec_set, staging_set,
+        "every NAKAMOTO_STAGING_TABLES entry must have exactly one copy spec (and vice versa); \
+         a cloned-but-uncopied table would be present-but-empty in the squash"
+    );
+}
+
+/// A source table the copy lists don't classify is rejected before any
+/// destination is produced — the runtime complement to the drift test.
+#[test]
+fn test_unclassified_source_table_is_rejected() {
+    let dir = tempdir().unwrap();
+    let src_nak_path = dir.path().join("src_nakamoto.sqlite");
+    let conn = create_source_nakamoto_db(&src_nak_path);
+    conn.execute_batch("CREATE TABLE surprise_table (x INTEGER)")
+        .unwrap();
+    drop(conn);
+
+    let dst_nak_path = dir.path().join("dst_nakamoto.sqlite");
+    let idx_path = dir.path().join("squashed_index.sqlite");
+    create_nakamoto_headers_index(&idx_path, &["canonical_ibh_1"]);
+
+    let err = copy_nakamoto_staging_blocks(
+        src_nak_path.to_str().unwrap(),
+        dst_nak_path.to_str().unwrap(),
+        idx_path.to_str().unwrap(),
+    )
+    .expect_err("unclassified source table must be rejected");
+    match err {
+        Error::CorruptionError(msg) => assert!(
+            msg.contains("surprise_table"),
+            "error should name the offending table, got: {msg}"
+        ),
+        other => panic!("expected CorruptionError, got {other:?}"),
+    }
     assert!(
-        extra.is_empty(),
-        "unclassified Nakamoto staging table(s) {extra:?}: classify each in \
-         NAKAMOTO_STAGING_TABLES (snapshot/blocks.rs)"
+        !dst_nak_path.exists(),
+        "no destination should be produced when the source is rejected"
     );
 }
 
