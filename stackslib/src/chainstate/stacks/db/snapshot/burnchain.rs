@@ -20,8 +20,8 @@ use rusqlite::{Connection, OpenFlags};
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 
 use super::common::{
-    clone_schemas_from_source, copied_rows, execute_copy_specs, with_offline_write_session,
-    TableCopySpec,
+    assert_source_schema, clone_schemas_from_source, copied_rows, execute_copy_specs,
+    with_offline_write_session, TableCopySpec,
 };
 use crate::burnchains::db::BurnchainDB;
 use crate::chainstate::burn::db::sortdb::SortitionDB;
@@ -50,6 +50,24 @@ fn all_required_tables() -> Vec<&'static str> {
         .chain(SCHEMA_ONLY_TABLES)
         .copied()
         .collect()
+}
+
+/// Every table the snapshot recognizes in a source `burnchain.sqlite`: the
+/// row-copied tables plus the schema-only ones. burnchain.sqlite is not
+/// MARF-backed, so there are no MARF infra tables to exempt.
+fn known_burnchain_tables() -> Vec<&'static str> {
+    all_required_tables()
+}
+
+/// The burnchain snapshot's source-schema guard (see [`assert_source_schema`]);
+/// `test_no_unclassified_burnchain_tables` runs it against a fresh schema.
+pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
+    assert_source_schema(
+        src_conn,
+        &known_burnchain_tables(),
+        "burnchain DB",
+        "COPIED_TABLES (to copy) or SCHEMA_ONLY_TABLES (to skip) in snapshot/burnchain.rs",
+    )
 }
 
 /// The canonical burn-hash set staged by [`populate_canonical_burn_hashes`],
@@ -140,6 +158,15 @@ pub fn copy_burnchain_db(
         return Err(Error::DestinationExists(dst_burnchain_db_path.to_string()));
     }
 
+    // Reject an unrecognized source schema before any destination work.
+    let src_conn = sqlite_open(
+        src_burnchain_db_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY,
+        false,
+    )?;
+    assert_source_tables_classified(&src_conn)?;
+    drop(src_conn);
+
     if let Some(parent) = Path::new(dst_burnchain_db_path).parent() {
         fs::create_dir_all(parent)?;
     }
@@ -163,7 +190,7 @@ pub fn copy_burnchain_db(
 /// canonical headers and ops (burn-hash filtered), commit metadata,
 /// `anchor_blocks` derived from the copied commit metadata, and `overrides`
 /// derived from the copied anchor blocks.
-fn burnchain_copy_specs() -> Vec<TableCopySpec> {
+pub(super) fn burnchain_copy_specs() -> Vec<TableCopySpec> {
     let bhh = CANONICAL_BURN_HASHES_SQL;
     vec![
         TableCopySpec {

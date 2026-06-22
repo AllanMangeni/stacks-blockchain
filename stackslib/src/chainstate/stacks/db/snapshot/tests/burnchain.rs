@@ -15,14 +15,16 @@
 
 //! Burnchain DB (burnchain.sqlite) copy tests.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use rusqlite::{params, Connection};
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use tempfile::tempdir;
 
-use super::super::burnchain::{copy_burnchain_db, COPIED_TABLES, SCHEMA_ONLY_TABLES};
-use super::super::common::unclassified_tables;
+use super::super::burnchain::{
+    assert_source_tables_classified, burnchain_copy_specs, copy_burnchain_db, COPIED_TABLES,
+};
 use crate::burnchains::db::BurnchainDB;
 use crate::burnchains::{Burnchain, PoxConstants};
 use crate::chainstate::burn::db::sortdb::tests::test_append_snapshot;
@@ -30,25 +32,61 @@ use crate::chainstate::burn::db::sortdb::SortitionDB;
 use crate::chainstate::stacks::index::Error;
 use crate::core::{StacksEpoch, StacksEpochExtension};
 
-/// Drift guard: every table the burnchain migrations create must be
-/// classified, so a future migration can't silently drop one from the copy.
+/// Drift guard: a freshly built production burnchain schema must be fully
+/// classified, so a future migration can't silently drop a table from the copy.
 #[test]
 fn test_no_unclassified_burnchain_tables() {
     let dir = tempdir().unwrap();
     let conn = create_burnchain_db(&dir.path().join("src.sqlite"));
-    // burnchain.sqlite is not MARF-backed, so unlike the other drift guards
-    // no MARF infra tables are exempted here.
-    let known: Vec<&str> = COPIED_TABLES
-        .iter()
-        .chain(SCHEMA_ONLY_TABLES)
-        .copied()
-        .collect();
-    let extra = unclassified_tables(&conn, &known);
+    assert_source_tables_classified(&conn)
+        .expect("fresh production burnchain schema must be fully classified");
+}
+
+/// A source table the copy lists don't classify is rejected before any
+/// destination is produced — the runtime complement to the drift test.
+#[test]
+fn test_unclassified_source_table_is_rejected() {
+    let dir = tempdir().unwrap();
+    let src_path = dir.path().join("src.sqlite");
+    let dst_path = dir.path().join("dst.sqlite");
+
+    let sort_path = create_squashed_sortition(dir.path(), &[]);
+
+    let src = create_burnchain_db(&src_path);
+    src.execute_batch("CREATE TABLE surprise_table (x INTEGER)")
+        .unwrap();
+    drop(src);
+
+    let err = copy_burnchain_db(
+        src_path.to_str().unwrap(),
+        dst_path.to_str().unwrap(),
+        sort_path.to_str().unwrap(),
+        0,
+    )
+    .expect_err("unclassified source table should error");
+    match err {
+        Error::CorruptionError(msg) => assert!(
+            msg.contains("surprise_table"),
+            "error should name the unknown table, got: {msg}"
+        ),
+        other => panic!("expected CorruptionError, got {other:?}"),
+    }
     assert!(
-        extra.is_empty(),
-        "unclassified burnchain table(s) {extra:?}: classify each in COPIED_TABLES or \
-         SCHEMA_ONLY_TABLES (snapshot/burnchain.rs)"
+        !dst_path.exists(),
+        "destination must not be produced when the source schema is rejected"
     );
+}
+
+/// Every cloned table (`COPIED_TABLES`) must have a row-copy spec and vice versa,
+/// else it would be cloned but never populated (present-but-empty).
+#[test]
+fn test_copy_specs_match_copied_tables() {
+    let copied: HashSet<&str> = COPIED_TABLES.iter().copied().collect();
+
+    let specs: Vec<&str> = burnchain_copy_specs().iter().map(|s| s.table).collect();
+    let spec_set: HashSet<&str> = specs.iter().copied().collect();
+    assert_eq!(specs.len(), spec_set.len(), "duplicate spec tables");
+    assert_eq!(spec_set, copied);
 }
 
 /// Create a burnchain.sqlite source via the production initializer
