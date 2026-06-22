@@ -33,7 +33,7 @@ use crate::vm::callables::{DefinedFunction, FunctionIdentifier};
 use crate::vm::contracts::Contract;
 use crate::vm::costs::cost_functions::ClarityCostFunction;
 use crate::vm::costs::execution_cost::ExecutionCost;
-use crate::vm::costs::{CostErrors, CostTracker, LimitedCostTracker, runtime_cost};
+use crate::vm::costs::{CostErrors, CostTracker, LimitedCostTracker, TimeTracker, runtime_cost};
 use crate::vm::database::{
     ClarityDatabase, DataMapMetadata, DataVariableMetadata, FungibleTokenMetadata,
     NonFungibleTokenMetadata,
@@ -265,17 +265,6 @@ pub struct EventBatch {
     pub events: Vec<StacksTransactionEvent>,
 }
 
-/** ExecutionTimeTracker keeps track of how much time a contract call is taking.
-   It is checked at every eval call.
-*/
-pub enum ExecutionTimeTracker {
-    NoTracking,
-    MaxTime {
-        start_time: Instant,
-        max_duration: Duration,
-    },
-}
-
 /// Per-`eval` abort check. This operates alongside the execution time
 /// tracker.
 ///
@@ -346,7 +335,7 @@ pub struct GlobalContext<'a, 'hooks> {
     /// This is the chain ID of the transaction
     pub chain_id: u32,
     pub eval_hooks: Option<Vec<&'hooks mut dyn EvalHook>>,
-    pub execution_time_tracker: ExecutionTimeTracker,
+    pub execution_time_tracker: TimeTracker,
     /// Callback checked at every `eval` call. When `check()` returns
     /// `Err(reason)`, execution is aborted with
     /// `VmExecutionError::RuntimeCheck(AbortedByExecutionHook)`. The
@@ -1778,7 +1767,7 @@ impl<'a, 'hooks> GlobalContext<'a, 'hooks> {
             epoch_id,
             chain_id,
             eval_hooks: None,
-            execution_time_tracker: ExecutionTimeTracker::NoTracking,
+            execution_time_tracker: TimeTracker::NoTracking,
             abort_callback: AbortCallback::None,
         }
     }
@@ -1788,7 +1777,7 @@ impl<'a, 'hooks> GlobalContext<'a, 'hooks> {
     }
 
     pub fn set_max_execution_time(&mut self, max_execution_time: Duration) {
-        self.execution_time_tracker = ExecutionTimeTracker::MaxTime {
+        self.execution_time_tracker = TimeTracker::MaxTime {
             start_time: Instant::now(),
             max_duration: max_execution_time,
         }

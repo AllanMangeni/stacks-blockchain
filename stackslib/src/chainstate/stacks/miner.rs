@@ -736,6 +736,16 @@ impl TransactionResult {
                 );
                 return (true, Error::ExecutionTimeExpired);
             }
+            Error::AnalysisTimeExpired => {
+                // The transaction's contract analysis took too long. Consider it problematic so the
+                // poison contract-publish is dropped and blacklisted instead of being re-mined.
+                info!("Problematic transaction caused AnalysisTimeExpired";
+                      "txid" => %tx.txid(),
+                      "origin" => %tx.get_origin().get_address(false),
+                      "payload" => ?tx.payload,
+                );
+                return (true, Error::AnalysisTimeExpired);
+            }
             e => e,
         };
         (false, error)

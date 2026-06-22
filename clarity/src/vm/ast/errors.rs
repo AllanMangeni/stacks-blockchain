@@ -285,6 +285,9 @@ impl From<CostErrors> for ParseError {
             CostErrors::ExecutionTimeExpired => {
                 ParseError::new(ParseErrorKind::ExecutionTimeExpired)
             }
+            // `AnalysisTimeExpired` is produced only by the analysis (type-checking) phase,
+            // never by the AST/parse cost tracker, so reaching this arm indicates a bug.
+            CostErrors::AnalysisTimeExpired => ParseError::new(ParseErrorKind::InterpreterFailure),
         }
     }
 }

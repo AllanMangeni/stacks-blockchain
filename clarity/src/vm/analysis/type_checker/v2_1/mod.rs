@@ -18,6 +18,7 @@ pub mod contexts;
 pub mod natives;
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use stacks_common::types::StacksEpochId;
 
@@ -33,7 +34,7 @@ pub use crate::vm::analysis::errors::{
 };
 use crate::vm::costs::cost_functions::ClarityCostFunction;
 use crate::vm::costs::{
-    CostErrors, CostOverflowingMath, CostTracker, ExecutionCost, LimitedCostTracker,
+    CostErrors, CostOverflowingMath, CostTracker, ExecutionCost, LimitedCostTracker, TimeTracker,
     analysis_typecheck_cost, runtime_cost,
 };
 use crate::vm::diagnostic::Diagnostic;
@@ -88,6 +89,12 @@ pub struct TypeChecker<'a, 'b> {
     db: &'a mut AnalysisDatabase<'b>,
     pub cost_track: LimitedCostTracker,
     clarity_version: ClarityVersion,
+    /// Wall-clock deadline for the analysis phase. `NoTracking` on the
+    /// deterministic-replay/commit path (so consensus stays deterministic);
+    /// `MaxTime` only on the non-consensus voting paths (mining / block-proposal
+    /// validation). Checked per node in `type_check` via
+    /// `check_analysis_abort_condition`, independent of cost charging.
+    time_tracker: TimeTracker,
 }
 
 impl CostTracker for TypeChecker<'_, '_> {
@@ -128,6 +135,7 @@ impl TypeChecker<'_, '_> {
         contract_analysis: &mut ContractAnalysis,
         analysis_db: &mut AnalysisDatabase,
         build_type_map: bool,
+        max_time: Option<Duration>,
     ) -> Result<(), StaticCheckError> {
         let cost_track = contract_analysis.take_contract_cost_tracker();
         let mut command = TypeChecker::new(
@@ -137,6 +145,7 @@ impl TypeChecker<'_, '_> {
             &contract_analysis.contract_identifier,
             &contract_analysis.clarity_version,
             build_type_map,
+            max_time,
         );
         // run the analysis, and replace the cost tracker whether or not the
         //   analysis succeeded.
@@ -1058,6 +1067,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         contract_identifier: &QualifiedContractIdentifier,
         clarity_version: &ClarityVersion,
         build_type_map: bool,
+        max_time: Option<Duration>,
     ) -> TypeChecker<'a, 'b> {
         Self {
             epoch: *epoch,
@@ -1067,7 +1077,21 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
             function_return_tracker: None,
             type_map: TypeMap::new(build_type_map),
             clarity_version: *clarity_version,
+            time_tracker: TimeTracker::from_opt_max_time(max_time),
         }
+    }
+
+    /// Per-node analysis abort check. Mirrors eval's `check_interpreter_abort_condition`:
+    /// it is invoked from the per-expression type-check loop (`type_check`),
+    /// independent of cost accounting, so any unbounded analysis path is bounded.
+    ///
+    /// Returns [`CostErrors::AnalysisTimeExpired`] once the configured analysis
+    /// deadline has elapsed.
+    fn check_analysis_abort_condition(&self) -> Result<(), CostErrors> {
+        if self.time_tracker.is_expired() {
+            return Err(CostErrors::AnalysisTimeExpired);
+        }
+        Ok(())
     }
 
     fn into_contract_analysis(
@@ -1181,6 +1205,9 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         expr: &SymbolicExpression,
         context: &TypingContext,
     ) -> Result<TypeSignature, StaticCheckError> {
+        // Per-node analysis deadline check (independent of cost accounting).
+        self.check_analysis_abort_condition()?;
+
         runtime_cost(ClarityCostFunction::AnalysisVisit, self, 0)?;
 
         let mut result = self.inner_type_check(expr, context);

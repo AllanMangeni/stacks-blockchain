@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 use std::fmt;
+use std::time::Duration;
 
 use stacks_common::types::StacksEpochId;
 
@@ -63,6 +64,9 @@ pub enum ClarityError {
     },
     /// Transaction exceeded the maximum execution time allowed.
     ExecutionTimeExpired,
+    /// Contract analysis (type-checking) exceeded the maximum analysis time allowed.
+    /// Distinct from `ExecutionTimeExpired` so an analysis-phase timeout is separable end-to-end.
+    AnalysisTimeExpired,
 }
 
 impl fmt::Display for ClarityError {
@@ -79,6 +83,7 @@ impl fmt::Display for ClarityError {
             ClarityError::Interpreter(e) => fmt::Display::fmt(e, f),
             ClarityError::BadTransaction(s) => fmt::Display::fmt(s, f),
             ClarityError::ExecutionTimeExpired => write!(f, "Execution time expired"),
+            ClarityError::AnalysisTimeExpired => write!(f, "Analysis time expired"),
         }
     }
 }
@@ -93,6 +98,7 @@ impl std::error::Error for ClarityError {
             ClarityError::Interpreter(ref e) => Some(e),
             ClarityError::BadTransaction(ref _s) => None,
             ClarityError::ExecutionTimeExpired => None,
+            ClarityError::AnalysisTimeExpired => None,
         }
     }
 }
@@ -108,6 +114,7 @@ impl From<StaticCheckError> for ClarityError {
                 ClarityError::CostError(ExecutionCost::max_value(), ExecutionCost::max_value())
             }
             StaticCheckErrorKind::ExecutionTimeExpired => ClarityError::ExecutionTimeExpired,
+            StaticCheckErrorKind::AnalysisTimeExpired => ClarityError::AnalysisTimeExpired,
             _ => ClarityError::StaticCheck(e),
         }
     }
@@ -264,12 +271,38 @@ pub trait TransactionConnection: ClarityConnection {
     where
         F: FnOnce(&mut AnalysisDatabase, LimitedCostTracker) -> (LimitedCostTracker, R);
 
-    /// Analyze a provided smart contract, but do not write the analysis to the AnalysisDatabase
+    /// Analyze a provided smart contract, but do not write the analysis to the AnalysisDatabase.
+    ///
+    /// The analysis (type-checking) phase runs with no wall-clock deadline. On the
+    /// non-consensus voting paths (mining / block-proposal validation) prefer
+    /// [`Self::analyze_smart_contract_with_deadline`] to bound the analysis time.
     fn analyze_smart_contract(
         &mut self,
         identifier: &QualifiedContractIdentifier,
         clarity_version: ClarityVersion,
         contract_content: &str,
+    ) -> Result<(ContractAST, ContractAnalysis), ClarityError> {
+        self.analyze_smart_contract_with_deadline(
+            identifier,
+            clarity_version,
+            contract_content,
+            None,
+        )
+    }
+
+    /// Analyze a provided smart contract with an optional wall-clock deadline on the
+    /// type-checking phase, but do not write the analysis to the AnalysisDatabase.
+    ///
+    /// `max_execution_time` must be `Some` only on the non-consensus voting paths
+    /// (block assembly / block-proposal validation) and `None` on deterministic
+    /// replay/commit, so consensus stays deterministic. When the deadline elapses
+    /// the analysis aborts with [`ClarityError::AnalysisTimeExpired`].
+    fn analyze_smart_contract_with_deadline(
+        &mut self,
+        identifier: &QualifiedContractIdentifier,
+        clarity_version: ClarityVersion,
+        contract_content: &str,
+        max_execution_time: Option<Duration>,
     ) -> Result<(ContractAST, ContractAnalysis), ClarityError> {
         let epoch_id = self.get_epoch();
 
@@ -296,6 +329,7 @@ pub trait TransactionConnection: ClarityConnection {
                 epoch_id,
                 clarity_version,
                 false,
+                max_execution_time,
             );
 
             match result {

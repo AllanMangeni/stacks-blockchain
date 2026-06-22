@@ -1379,10 +1379,20 @@ impl StacksChainState {
                 // analysis pass -- if this fails, then the transaction is still accepted, but nothing is stored or processed.
                 // The reason for this is that analyzing the transaction is itself an expensive
                 // operation, and the paying account will need to be debited the fee regardless.
-                let analysis_resp = clarity_tx.analyze_smart_contract(
+                //
+                // `max_analysis_time` bounds the analysis (type-checking) phase on the
+                // non-consensus voting paths (mining / block-proposal validation); it is
+                // `None` on deterministic replay/commit (consensus stays deterministic). An
+                // elapsed deadline surfaces as `ClarityError::AnalysisTimeExpired` and is
+                // routed to a hard `Error::AnalysisTimeExpired` below so the offending
+                // contract-publish is dropped + blacklisted (self-heal) rather than re-mined.
+                let max_analysis_time = max_execution_time; // TEMPORARY use max_execution_time.
+
+                let analysis_resp = clarity_tx.analyze_smart_contract_with_deadline(
                     &contract_id,
                     clarity_version,
                     &contract_code_str,
+                    max_analysis_time,
                 );
                 let (contract_ast, contract_analysis) = match analysis_resp {
                     Ok(x) => x,
@@ -1402,6 +1412,19 @@ impl StacksChainState {
                                     cost_after.clone(),
                                     budget.clone(),
                                 ));
+                            }
+                            // The analysis (type-checking) phase exceeded its wall-clock deadline
+                            // on a voting path. Route it to a hard error so the miner classifies
+                            // the tx `Problematic` (`is_problematic`) and drops + blacklists it,
+                            // letting the network self-heal instead of re-mining the poison tx.
+                            // This is intentionally NOT keyed on `rejectable_in_epoch` (a soft,
+                            // node-local timeout does not consensus-invalidate a block).
+                            ClarityError::AnalysisTimeExpired => {
+                                warn!("Contract analysis exceeded the analysis time limit; tx will be dropped from the mempool";
+                                      "txid" => %tx.txid(),
+                                      "contract_name" => %contract_id,
+                                );
+                                return Err(Error::AnalysisTimeExpired);
                             }
                             other_error => {
                                 if let ClarityError::Parse(err) = &other_error {

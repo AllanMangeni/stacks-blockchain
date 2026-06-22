@@ -46,6 +46,7 @@ pub fn mem_type_check(
         epoch,
         version,
         true,
+        None,
     ) {
         Ok(x) => {
             // return the first type result of the type checker

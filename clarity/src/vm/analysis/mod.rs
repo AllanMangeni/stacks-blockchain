@@ -23,6 +23,8 @@ pub mod trait_checker;
 pub mod type_checker;
 pub mod types;
 
+use std::time::Duration;
+
 use stacks_common::types::StacksEpochId;
 
 pub use self::analysis_db::AnalysisDatabase;
@@ -72,6 +74,7 @@ pub fn mem_type_check(
         epoch,
         version,
         true,
+        None,
     ) {
         Ok(x) => {
             // return the first type result of the type checker
@@ -112,6 +115,7 @@ pub fn type_check(
         *epoch,
         *version,
         true,
+        None,
     )
     .map_err(|e| e.0)
 }
@@ -126,6 +130,12 @@ pub fn run_analysis(
     epoch: StacksEpochId,
     version: ClarityVersion,
     build_type_map: bool,
+    // Wall-clock deadline for the type-checking phase. `Some` only on the
+    // non-consensus voting paths (mining / block-proposal validation); `None`
+    // on deterministic replay/commit (so consensus stays deterministic). Only
+    // the v2_1 checker (live Nakamoto path) honors it; the pre-Nakamoto v2_05
+    // checker runs solely on historical replay and ignores it.
+    max_time: Option<Duration>,
 ) -> Result<ContractAnalysis, Box<(StaticCheckError, LimitedCostTracker)>> {
     let mut contract_analysis = ContractAnalysis::new(
         contract_identifier.clone(),
@@ -149,9 +159,13 @@ pub fn run_analysis(
             | StacksEpochId::Epoch31
             | StacksEpochId::Epoch32
             | StacksEpochId::Epoch33
-            | StacksEpochId::Epoch34 => {
-                TypeChecker2_1::run_pass(&epoch, &mut contract_analysis, db, build_type_map)
-            }
+            | StacksEpochId::Epoch34 => TypeChecker2_1::run_pass(
+                &epoch,
+                &mut contract_analysis,
+                db,
+                build_type_map,
+                max_time,
+            ),
             StacksEpochId::Epoch10 => {
                 return Err(StaticCheckErrorKind::Unreachable(
                     "Epoch 1.0 is not a valid epoch for analysis".into(),
