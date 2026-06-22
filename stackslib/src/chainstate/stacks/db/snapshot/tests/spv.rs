@@ -15,6 +15,8 @@
 
 //! SPV headers DB (headers.sqlite) copy tests.
 
+use std::collections::HashSet;
+
 use rstest::rstest;
 use rusqlite::Connection;
 use stacks_common::deps_common::bitcoin::blockdata::block::{BlockHeader, LoneBlockHeader};
@@ -22,25 +24,72 @@ use stacks_common::deps_common::bitcoin::network::encodable::VarInt;
 use stacks_common::deps_common::bitcoin::util::hash::Sha256dHash;
 use tempfile::tempdir;
 
-use super::super::common::unclassified_tables;
+use super::super::spv::{
+    assert_source_tables_classified, copy_spv_headers, spv_copy_specs, REQUIRED_TABLES,
+};
 use crate::burnchains::bitcoin::spv::{SpvClient, BLOCK_DIFFICULTY_CHUNK_SIZE, SPV_DB_VERSION};
 use crate::burnchains::bitcoin::BitcoinNetworkType;
 use crate::chainstate::stacks::index::Error;
 
-/// Drift guard: every table the SPV migrations create must be
-/// classified, so a future migration can't silently drop one from the copy.
+/// Drift guard: every table the SPV migrations create must be classified, so a
+/// future migration can't silently drop one from the copy. Runs the exact
+/// production guard against a freshly-migrated schema, so the test and the
+/// runtime check cannot drift apart.
 #[test]
 fn test_no_unclassified_spv_tables() {
     let dir = tempdir().unwrap();
     let src_path = dir.path().join("src.sqlite");
     let _client = create_spv_headers_db(&src_path);
     let conn = Connection::open(&src_path).unwrap();
-    // headers.sqlite is not MARF-backed, so unlike the other drift guards
-    // no MARF infra tables are exempted here.
-    let extra = unclassified_tables(&conn, super::super::spv::REQUIRED_TABLES);
+    assert_source_tables_classified(&conn)
+        .expect("fresh production SPV schema must be fully classified");
+}
+
+/// Every cloned table ([`REQUIRED_TABLES`]) must have a row-copy spec and vice versa,
+/// else it would be cloned but never populated (present-but-empty).
+#[test]
+fn test_spv_copy_specs_match_required_tables() {
+    let spec_tables: Vec<&str> = spv_copy_specs(100).iter().map(|s| s.table).collect();
+    let spec_set: HashSet<&str> = spec_tables.iter().copied().collect();
+    assert_eq!(
+        spec_tables.len(),
+        spec_set.len(),
+        "duplicate table in spv_copy_specs"
+    );
+    let required_set: HashSet<&str> = REQUIRED_TABLES.iter().copied().collect();
+    assert_eq!(
+        spec_set, required_set,
+        "every REQUIRED_TABLES entry must have exactly one copy spec (and vice versa); \
+         a cloned-but-uncopied table would be present-but-empty in the squash"
+    );
+}
+
+/// A source table the copy lists don't classify is rejected before any
+/// destination is produced — the runtime complement to the drift test.
+#[test]
+fn test_unclassified_source_table_is_rejected() {
+    let dir = tempdir().unwrap();
+    let src_path = dir.path().join("src.sqlite");
+    let dst_path = dir.path().join("dst.sqlite");
+
+    let _client = create_spv_headers_db(&src_path);
+    let conn = Connection::open(&src_path).unwrap();
+    conn.execute_batch("CREATE TABLE surprise_table (x INTEGER)")
+        .unwrap();
+    drop(conn);
+
+    let err = copy_spv_headers(src_path.to_str().unwrap(), dst_path.to_str().unwrap(), 100)
+        .expect_err("unclassified source table must be rejected");
+    match err {
+        Error::CorruptionError(msg) => assert!(
+            msg.contains("surprise_table"),
+            "error should name the offending table, got: {msg}"
+        ),
+        other => panic!("expected CorruptionError, got {other:?}"),
+    }
     assert!(
-        extra.is_empty(),
-        "unclassified SPV table(s) {extra:?}: classify each in REQUIRED_TABLES (snapshot/spv.rs)"
+        !dst_path.exists(),
+        "no destination should be produced when the source is rejected"
     );
 }
 

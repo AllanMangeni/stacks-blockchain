@@ -16,17 +16,36 @@
 use std::fs;
 use std::path::Path;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 use super::common::{
-    clone_schemas_from_source, copied_rows, execute_copy_specs, with_offline_write_session,
-    TableCopySpec,
+    assert_source_schema, clone_schemas_from_source, copied_rows, execute_copy_specs,
+    with_offline_write_session, TableCopySpec,
 };
 use crate::burnchains::bitcoin::spv::num_complete_chain_work_intervals;
 use crate::chainstate::stacks::index::Error;
+use crate::util_lib::db::sqlite_open;
 
 /// Tables required for the current headers.sqlite schema.
 pub(super) const REQUIRED_TABLES: &[&str] = &["headers", "db_config", "chain_work"];
+
+/// Every table the SPV headers snapshot accounts for. headers.sqlite is not
+/// MARF-backed, so unlike the other slices there are no MARF infra tables to
+/// exempt — the content-copied [`REQUIRED_TABLES`] are the whole schema.
+fn known_spv_tables() -> Vec<&'static str> {
+    REQUIRED_TABLES.to_vec()
+}
+
+/// The spv snapshot's source-schema guard (see [`assert_source_schema`]);
+/// `test_no_unclassified_spv_tables` runs it against a fresh schema.
+pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
+    assert_source_schema(
+        src_conn,
+        &known_spv_tables(),
+        "headers.sqlite",
+        "REQUIRED_TABLES in snapshot/spv.rs",
+    )
+}
 
 /// Row-count statistics returned by [`copy_spv_headers`].
 #[derive(Debug, Clone)]
@@ -51,6 +70,12 @@ pub fn copy_spv_headers(
         fs::create_dir_all(parent)?;
     }
 
+    // Reject an unrecognized source schema before any destination work.
+    // The copy session only ATTACHes src, so open it read-only here for the check.
+    let src_conn = sqlite_open(src_path, OpenFlags::SQLITE_OPEN_READ_ONLY, false)?;
+    assert_source_tables_classified(&src_conn)?;
+    drop(src_conn);
+
     with_offline_write_session(dst_path, &[("src", src_path)], "", |conn| {
         copy_spv_headers_inner(conn, burn_height)
     })
@@ -59,7 +84,7 @@ pub fn copy_spv_headers(
 /// Build the copy specs for the SPV headers DB: `db_config` verbatim,
 /// `headers` up to `burn_height`, `chain_work` for complete difficulty
 /// intervals only.
-fn spv_copy_specs(burn_height: u64) -> Vec<TableCopySpec> {
+pub(super) fn spv_copy_specs(burn_height: u64) -> Vec<TableCopySpec> {
     let complete_intervals = num_complete_chain_work_intervals(burn_height);
     vec![
         TableCopySpec {
