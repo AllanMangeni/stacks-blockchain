@@ -926,7 +926,6 @@ impl From<CostErrors> for StaticCheckErrorKind {
             ),
             CostErrors::Expect(s) => StaticCheckErrorKind::Unreachable(s),
             CostErrors::ExecutionTimeExpired => StaticCheckErrorKind::ExecutionTimeExpired,
-            CostErrors::AnalysisTimeExpired => StaticCheckErrorKind::AnalysisTimeExpired,
         }
     }
 }
@@ -950,11 +949,6 @@ impl From<CostErrors> for RuntimeCheckErrorKind {
             ),
             CostErrors::Expect(s) => RuntimeCheckErrorKind::Unreachable(s),
             CostErrors::ExecutionTimeExpired => RuntimeCheckErrorKind::ExecutionTimeExpired,
-            // `AnalysisTimeExpired` is produced only by the analysis (type-checking) phase,
-            // never by the runtime cost tracker, so reaching this arm indicates a bug.
-            CostErrors::AnalysisTimeExpired => RuntimeCheckErrorKind::Unreachable(
-                "Unexpected analysis time expired as a runtime cost error".into(),
-            ),
         }
     }
 }

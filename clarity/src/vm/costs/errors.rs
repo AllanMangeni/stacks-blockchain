@@ -47,10 +47,6 @@ pub enum CostErrors {
     /// Runtime (eval) execution time exceeds the allowed budget, halting execution to ensure responsiveness.
     /// Invalidates Block: false (soft, node-local limit applied only on the mining / block-proposal paths).
     ExecutionTimeExpired,
-    /// Contract-analysis (type-checking) time exceeds the allowed budget, halting analysis to ensure responsiveness.
-    /// Distinct from `ExecutionTimeExpired` so an analysis-phase timeout is separable in logs/metrics and error handling.
-    /// Invalidates Block: false (soft, node-local limit applied only on the mining / block-proposal paths).
-    AnalysisTimeExpired,
     /// Unexpected condition or failure, indicating a bug or invalid state.
     /// Invalidates Block: true.
     InterpreterFailure,
@@ -74,7 +70,6 @@ impl fmt::Display for CostErrors {
             CostErrors::InterpreterFailure => write!(f, "Interpreter failure"),
             CostErrors::Expect(s) => write!(f, "Expectation failed: {s}"),
             CostErrors::ExecutionTimeExpired => write!(f, "Execution time expired"),
-            CostErrors::AnalysisTimeExpired => write!(f, "Analysis time expired"),
         }
     }
 }

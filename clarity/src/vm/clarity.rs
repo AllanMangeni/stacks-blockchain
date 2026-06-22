@@ -24,10 +24,11 @@ use crate::vm::analysis::{
 use crate::vm::ast::ContractAST;
 use crate::vm::ast::errors::{ParseError, ParseErrorKind};
 use crate::vm::contexts::{AssetMap, ExecutionState, InvocationContext, OwnedEnvironment};
-use crate::vm::costs::{ExecutionCost, LimitedCostTracker, TimeTracker};
+use crate::vm::costs::{ExecutionCost, LimitedCostTracker};
 use crate::vm::database::ClarityDatabase;
 use crate::vm::errors::{ClarityEvalError, VmExecutionError};
 use crate::vm::events::StacksTransactionEvent;
+use crate::vm::time_tracker::TimeTracker;
 use crate::vm::types::{BuffData, PrincipalData, QualifiedContractIdentifier};
 use crate::vm::{ClarityVersion, ContractContext, SymbolicExpression, Value, analysis, ast};
 

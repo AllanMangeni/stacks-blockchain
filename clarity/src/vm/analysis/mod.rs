@@ -39,11 +39,12 @@ pub use self::types::{AnalysisPass, ContractAnalysis};
 use crate::vm::ClarityVersion;
 #[cfg(feature = "rusqlite")]
 use crate::vm::ast::build_ast;
-use crate::vm::costs::{LimitedCostTracker, TimeTracker};
+use crate::vm::costs::LimitedCostTracker;
 #[cfg(feature = "rusqlite")]
 use crate::vm::database::MemoryBackingStore;
 use crate::vm::database::STORE_CONTRACT_SRC_INTERFACE;
 use crate::vm::representations::SymbolicExpression;
+use crate::vm::time_tracker::TimeTracker;
 use crate::vm::types::QualifiedContractIdentifier;
 #[cfg(feature = "rusqlite")]
 use crate::vm::types::TypeSignature;

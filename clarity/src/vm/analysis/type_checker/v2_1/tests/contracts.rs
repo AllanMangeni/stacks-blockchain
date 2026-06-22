@@ -27,9 +27,10 @@ use crate::vm::analysis::{
     mem_type_check as mem_run_analysis, run_analysis,
 };
 use crate::vm::ast::parse;
-use crate::vm::costs::{LimitedCostTracker, TimeTracker};
+use crate::vm::costs::LimitedCostTracker;
 use crate::vm::database::MemoryBackingStore;
 use crate::vm::tests::test_clarity_versions;
+use crate::vm::time_tracker::TimeTracker;
 use crate::vm::types::signatures::CallableSubtype;
 use crate::vm::types::{
     BufferLength, ListTypeData, QualifiedContractIdentifier, SequenceSubtype, StringSubtype,

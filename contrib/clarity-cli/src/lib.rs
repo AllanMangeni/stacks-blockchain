@@ -23,12 +23,13 @@ use clarity::vm::analysis::{AnalysisDatabase, ContractAnalysis};
 use clarity::vm::ast::build_ast;
 use clarity::vm::ast::errors::ParseError;
 use clarity::vm::contexts::{AssetMap, GlobalContext, OwnedEnvironment};
-use clarity::vm::costs::{ExecutionCost, LimitedCostTracker, TimeTracker};
+use clarity::vm::costs::{ExecutionCost, LimitedCostTracker};
 use clarity::vm::database::{
     BurnStateDB, ClarityDatabase, HeadersDB, NULL_BURN_STATE_DB, STXBalance,
 };
 use clarity::vm::errors::{ClarityEvalError, StaticCheckError, VmExecutionError};
 use clarity::vm::events::StacksTransactionEvent;
+use clarity::vm::time_tracker::TimeTracker;
 use clarity::vm::types::{PrincipalData, QualifiedContractIdentifier};
 use clarity::vm::{
     ClarityVersion, ContractContext, ContractName, SymbolicExpression, Value, analysis, ast,

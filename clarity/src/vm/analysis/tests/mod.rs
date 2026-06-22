@@ -25,8 +25,9 @@ use crate::vm::analysis::{
     run_analysis,
 };
 use crate::vm::ast::build_ast;
-use crate::vm::costs::{LimitedCostTracker, TimeTracker};
+use crate::vm::costs::LimitedCostTracker;
 use crate::vm::database::MemoryBackingStore;
+use crate::vm::time_tracker::TimeTracker;
 use crate::vm::types::QualifiedContractIdentifier;
 
 mod utils {
@@ -475,8 +476,10 @@ fn test_run_analysis_aborts_when_deadline_already_elapsed() {
 /// analysis deadline, so a valid contract type-checks successfully.
 #[test]
 fn test_run_analysis_no_tracking_is_not_time_limited() {
-    let result =
-        utils::run_analysis_with_tracker("(define-read-only (foo) (+ 1 1))", TimeTracker::free());
+    let result = utils::run_analysis_with_tracker(
+        "(define-read-only (foo) (+ 1 1))",
+        TimeTracker::unlimited(),
+    );
     assert!(
         result.is_ok(),
         "NoTracking analysis should succeed, got {:?}",

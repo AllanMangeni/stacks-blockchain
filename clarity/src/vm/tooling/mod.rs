@@ -19,8 +19,9 @@ use super::analysis::ContractAnalysis;
 use super::types::TypeSignature;
 use crate::vm::analysis::{StaticCheckError, run_analysis};
 use crate::vm::ast::build_ast;
-use crate::vm::costs::{LimitedCostTracker, TimeTracker};
+use crate::vm::costs::LimitedCostTracker;
 use crate::vm::database::MemoryBackingStore;
+use crate::vm::time_tracker::TimeTracker;
 use crate::vm::types::QualifiedContractIdentifier;
 
 /// Used by CLI tools like the docs generator. Not used in production

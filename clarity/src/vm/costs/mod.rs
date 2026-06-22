@@ -15,7 +15,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
 use std::{cmp, fmt};
 
 use costs_1::Costs1;
@@ -60,67 +59,6 @@ pub mod errors;
 pub mod execution_cost;
 
 pub const CLARITY_MEMORY_LIMIT: u64 = 100 * 1000 * 1000;
-
-/// Tracks wall-clock time spent in a single execution phase of one transaction
-/// (Clarity evaluation *or* contract analysis) and signals when a configured
-/// deadline has elapsed.
-///
-/// `NoTracking` is the deterministic-replay / no-limit case (it must be used on
-/// the commit/replay path so consensus stays deterministic). `MaxTime` is used
-/// only on the non-consensus voting paths — block assembly (mining) and
-/// block-proposal validation (signers) — to bound the CPU a single transaction
-/// can spend.
-///
-/// The same type is held both by `GlobalContext` (eval) and by the analysis
-/// `TypeChecker` (type-checking). It is deliberately error-agnostic: callers map
-/// an elapsed deadline to their own phase-specific error (`ExecutionTimeExpired`
-/// for eval, `AnalysisTimeExpired` for analysis). See
-/// `check_interpreter_abort_condition` (eval) and
-/// `TypeChecker::check_analysis_abort_condition` (analysis).
-pub enum TimeTracker {
-    NoTracking,
-    MaxTime {
-        start_time: Instant,
-        max_duration: Duration,
-    },
-}
-
-impl TimeTracker {
-    /// Build a tracker from an optional deadline. `Some(d)` starts the clock now
-    /// and bounds the phase to `d`; `None` disables tracking (deterministic
-    /// replay / no limit).
-    pub fn from_opt_max_duration(duration: Option<Duration>) -> Self {
-        match duration {
-            Some(max_duration) => Self::from_max_duration(max_duration),
-            None => Self::free(),
-        }
-    }
-
-    /// Create a [`Self::MaxTime`] with the given duration and start the clock now.
-    pub fn from_max_duration(duration: Duration) -> Self {
-        TimeTracker::MaxTime {
-            start_time: Instant::now(),
-            max_duration: duration,
-        }
-    }
-
-    /// Create a [`Self::NoTracking`] tracker flavor.
-    pub fn free() -> Self {
-        TimeTracker::NoTracking
-    }
-
-    /// Returns `true` if a deadline is configured and has elapsed. Always
-    /// `false` for `NoTracking`.
-    pub fn is_expired(&self) -> bool {
-        match self {
-            TimeTracker::NoTracking => false,
-            TimeTracker::MaxTime {
-                start_time,
-                max_duration,
-            } => start_time.elapsed() >= *max_duration,
-        }
-    }
-}
 
 // TODO: factor out into a boot lib?
 pub const COSTS_1_NAME: &str = "costs";

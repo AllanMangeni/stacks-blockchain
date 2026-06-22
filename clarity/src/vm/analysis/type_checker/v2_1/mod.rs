@@ -33,7 +33,7 @@ pub use crate::vm::analysis::errors::{
 };
 use crate::vm::costs::cost_functions::ClarityCostFunction;
 use crate::vm::costs::{
-    CostErrors, CostOverflowingMath, CostTracker, ExecutionCost, LimitedCostTracker, TimeTracker,
+    CostErrors, CostOverflowingMath, CostTracker, ExecutionCost, LimitedCostTracker,
     analysis_typecheck_cost, runtime_cost,
 };
 use crate::vm::diagnostic::Diagnostic;
@@ -43,6 +43,7 @@ use crate::vm::representations::SymbolicExpressionType::{
     Atom, AtomValue, Field, List, LiteralValue, TraitReference,
 };
 use crate::vm::representations::{ClarityName, SymbolicExpression, depth_traverse};
+use crate::vm::time_tracker::TimeTracker;
 use crate::vm::types::signatures::{
     CallableSubtype, FunctionArgSignature, FunctionReturnsSignature, FunctionSignature,
 };
@@ -1084,11 +1085,11 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
     /// it is invoked from the per-expression type-check loop (`type_check`),
     /// independent of cost accounting, so any unbounded analysis path is bounded.
     ///
-    /// Returns [`CostErrors::AnalysisTimeExpired`] once the configured analysis
-    /// deadline has elapsed.
-    fn check_analysis_abort_condition(&self) -> Result<(), CostErrors> {
+    /// Returns [`StaticCheckErrorKind::AnalysisTimeExpired`] once the configured
+    /// analysis deadline has elapsed.
+    fn check_analysis_abort_condition(&self) -> Result<(), StaticCheckError> {
         if self.time_tracker.is_expired() {
-            return Err(CostErrors::AnalysisTimeExpired);
+            return Err(StaticCheckErrorKind::AnalysisTimeExpired.into());
         }
         Ok(())
     }
