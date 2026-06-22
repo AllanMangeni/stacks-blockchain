@@ -1137,6 +1137,7 @@ impl StacksChainState {
         tx: &StacksTransaction,
         origin_account: &StacksAccount,
         max_execution_time: Option<std::time::Duration>,
+        max_analysis_time: Option<std::time::Duration>,
     ) -> Result<StacksTransactionReceipt, Error> {
         match tx.payload {
             TransactionPayload::TokenTransfer(ref addr, ref amount, ref memo) => {
@@ -1380,14 +1381,12 @@ impl StacksChainState {
                 // The reason for this is that analyzing the transaction is itself an expensive
                 // operation, and the paying account will need to be debited the fee regardless.
                 //
-                // `max_analysis_time` bounds the analysis (type-checking) phase on the
+                // `max_analysis_time` bounds the analysis phase on the
                 // non-consensus voting paths (mining / block-proposal validation); it is
                 // `None` on deterministic replay/commit (consensus stays deterministic). An
                 // elapsed deadline surfaces as `ClarityError::AnalysisTimeExpired` and is
                 // routed to a hard `Error::AnalysisTimeExpired` below so the offending
-                // contract-publish is dropped + blacklisted (self-heal) rather than re-mined.
-                let max_analysis_time = max_execution_time; // TEMPORARY use max_execution_time.
-
+                // contract-publish is dropped + blacklisted rather than re-mined.
                 let analysis_resp = clarity_tx.analyze_smart_contract(
                     &contract_id,
                     clarity_version,
@@ -1710,9 +1709,17 @@ impl StacksChainState {
         quiet: bool,
         max_execution_time: Option<std::time::Duration>,
     ) -> Result<(u64, StacksTransactionReceipt), Error> {
-        Self::process_transaction_with_check(clarity_block, tx, quiet, max_execution_time, |_| {
-            Ok(())
-        })
+        // The generic/replay entry point imposes no analysis deadline (`None`): only the
+        // miner assembly and block-proposal validation paths (which call
+        // `process_transaction_with_check` directly) bound the analysis phase.
+        Self::process_transaction_with_check(
+            clarity_block,
+            tx,
+            quiet,
+            max_execution_time,
+            None,
+            |_| Ok(()),
+        )
     }
 
     pub fn process_transaction_with_check<
@@ -1722,6 +1729,7 @@ impl StacksChainState {
         tx: &StacksTransaction,
         quiet: bool,
         max_execution_time: Option<std::time::Duration>,
+        max_analysis_time: Option<std::time::Duration>,
         mut check: F,
     ) -> Result<(u64, StacksTransactionReceipt), Error> {
         debug!("Process transaction {} ({})", tx.txid(), tx.payload.name());
@@ -1762,6 +1770,7 @@ impl StacksChainState {
                 tx,
                 &origin_account,
                 max_execution_time,
+                max_analysis_time,
             )?;
 
             // update the account nonces
@@ -1789,6 +1798,7 @@ impl StacksChainState {
                 &mut transaction,
                 tx,
                 &origin_account,
+                None,
                 None,
             )?;
 
@@ -1969,6 +1979,7 @@ pub mod test {
                 nonce: 0,
                 stx_balance: STXBalance::Unlocked { amount: 100 },
             },
+            None,
             None,
         )
         .unwrap();

@@ -389,14 +389,13 @@ fn miner_permanently_bans_problematic_txid() {
 
 /// A definitions-only contract: a contract-publish first runs the analysis (type-checking)
 /// phase, then evaluates any top-level expressions. With no top-level expression, the only
-/// phase that can exceed an execution-time deadline is **analysis** — so a rejection of this
-/// contract under a (re)used `max_execution_time` budget unambiguously certifies the Fix B
-/// analysis-phase deadline (not the eval-phase one).
+/// phase that can exceed a deadline is **analysis** — so a rejection of this contract under a
+/// small `max_analysis_time_secs` budget unambiguously certifies it
 const ANALYSIS_ONLY_CONTRACT_SRC: &str =
     "(define-public (dummy (number uint)) (begin (ok (+ number u1))))";
 
 /// Certifies that a contract-publish whose **type-checking (analysis) phase** exceeds the
-/// miner's `max_execution_time_secs` is classified `Problematic` during block assembly and
+/// miner's `max_analysis_time_secs` is classified `Problematic` during block assembly and
 /// dropped from the block (and blacklisted from the mempool), so it is never mined and the
 /// sender's nonce never advances — the on-chain inverse of the pre-fix analysis stall.
 #[test]
@@ -417,10 +416,9 @@ fn miner_drops_contract_publish_on_analysis_time_expired() {
         vec![(sender_addr.clone(), deploy_fee * 10)],
         |_| {},
         |node_config| {
-            // 0s analysis/eval budget: the analysis phase is already over budget at the
-            // first type-check node, so the miner classifies any contract-publish as
-            // Problematic during block assembly and drops + blacklists it.
-            node_config.miner.max_execution_time_secs = 0;
+            // 0s analysis budget: any contract-publish is over budget right away,
+            // so the miner drops + blacklists it during assembly.
+            node_config.miner.max_analysis_time_secs = 0;
         },
         None,
         None,

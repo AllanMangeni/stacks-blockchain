@@ -1086,6 +1086,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     &costs_2_contract_tx,
                     &boot_code_account,
                     None,
+                    None,
                 )
                 .expect("FATAL: Failed to process PoX 2 contract initialization")
             });
@@ -1196,6 +1197,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     &pox_2_contract_tx,
                     &boot_code_account,
                     None,
+                    None,
                 )
                 .expect("FATAL: Failed to process PoX 2 contract initialization");
 
@@ -1266,6 +1268,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     tx_conn,
                     &costs_3_contract_tx,
                     &boot_code_account,
+                    None,
                     None,
                 )
                 .expect("FATAL: Failed to process costs-3 contract initialization");
@@ -1435,6 +1438,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     &pox_3_contract_tx,
                     &boot_code_account,
                     None,
+                    None,
                 )
                 .expect("FATAL: Failed to process PoX 3 contract initialization");
 
@@ -1553,6 +1557,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     &pox_4_contract_tx,
                     &boot_code_account,
                     None,
+                    None,
                 )
                 .expect("FATAL: Failed to process PoX 4 contract initialization");
 
@@ -1612,6 +1617,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     &signers_contract_tx,
                     &boot_code_account,
                     None,
+                    None,
                 )
                 .expect("FATAL: Failed to process .signers contract initialization");
                 receipt
@@ -1658,6 +1664,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                             &signers_contract_tx,
                             &boot_code_account,
                             None,
+                            None,
                         )
                         .expect("FATAL: Failed to process .signers DB contract initialization");
                         receipt
@@ -1696,6 +1703,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     tx_conn,
                     &signers_contract_tx,
                     &boot_code_account,
+                    None,
                     None,
                 )
                 .expect("FATAL: Failed to process .signers-voting contract initialization");
@@ -1828,6 +1836,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     &sip_031_contract_tx,
                     &boot_code_account,
                     None,
+                    None,
                 )
                 .expect("FATAL: Failed to process .sip-031 contract initialization");
                 receipt
@@ -1941,6 +1950,7 @@ impl<'a, 'b> ClarityBlockConnection<'a, 'b> {
                     tx_conn,
                     &costs_4_contract_tx,
                     &boot_code_account,
+                    None,
                     None,
                 )
                 .expect("FATAL: Failed to process costs-4 contract initialization");
@@ -3178,20 +3188,24 @@ mod tests {
             );
 
             conn.as_transaction(|clarity_tx| {
-                let receipt =
-                    StacksChainState::process_transaction_payload(clarity_tx, &tx1, &account, None)
-                        .unwrap();
+                let receipt = StacksChainState::process_transaction_payload(
+                    clarity_tx, &tx1, &account, None, None,
+                )
+                .unwrap();
                 assert!(receipt.post_condition_aborted);
             });
             conn.as_transaction(|clarity_tx| {
-                StacksChainState::process_transaction_payload(clarity_tx, &tx2, &account, None)
-                    .unwrap();
+                StacksChainState::process_transaction_payload(
+                    clarity_tx, &tx2, &account, None, None,
+                )
+                .unwrap();
             });
 
             conn.as_transaction(|clarity_tx| {
-                let receipt =
-                    StacksChainState::process_transaction_payload(clarity_tx, &tx3, &account, None)
-                        .unwrap();
+                let receipt = StacksChainState::process_transaction_payload(
+                    clarity_tx, &tx3, &account, None, None,
+                )
+                .unwrap();
 
                 assert!(receipt.post_condition_aborted);
             });

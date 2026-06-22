@@ -744,6 +744,11 @@ impl NakamotoBlockProposal {
 
         let block_deadline = Instant::now() + Duration::from_secs(timeout_secs);
         let per_tx_max_execution_time = Duration::from_secs(max_tx_execution_time_secs);
+        // Phase-1 reuse: bound the analysis (type-checking) phase during proposal
+        // validation by the same per-tx execution-time budget. A dedicated signer-side
+        // analysis config (`block_proposal_max_tx_analysis_execution_time_secs`) is the
+        // remaining phase-2 item.
+        builder.max_analysis_time = Some(per_tx_max_execution_time);
         let mut receipts_total = 0u64;
         for (i, tx) in self.block.txs.iter().enumerate() {
             // Enforce the overall block validation budget between txs. A tx
