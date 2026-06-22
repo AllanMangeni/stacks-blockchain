@@ -23,8 +23,6 @@ pub mod trait_checker;
 pub mod type_checker;
 pub mod types;
 
-use std::time::Duration;
-
 use stacks_common::types::StacksEpochId;
 
 pub use self::analysis_db::AnalysisDatabase;
@@ -41,7 +39,7 @@ pub use self::types::{AnalysisPass, ContractAnalysis};
 use crate::vm::ClarityVersion;
 #[cfg(feature = "rusqlite")]
 use crate::vm::ast::build_ast;
-use crate::vm::costs::LimitedCostTracker;
+use crate::vm::costs::{LimitedCostTracker, TimeTracker};
 #[cfg(feature = "rusqlite")]
 use crate::vm::database::MemoryBackingStore;
 use crate::vm::database::STORE_CONTRACT_SRC_INTERFACE;
@@ -74,7 +72,7 @@ pub fn mem_type_check(
         epoch,
         version,
         true,
-        None,
+        TimeTracker::NoTracking,
     ) {
         Ok(x) => {
             // return the first type result of the type checker
@@ -115,7 +113,7 @@ pub fn type_check(
         *epoch,
         *version,
         true,
-        None,
+        TimeTracker::NoTracking,
     )
     .map_err(|e| e.0)
 }
@@ -130,12 +128,11 @@ pub fn run_analysis(
     epoch: StacksEpochId,
     version: ClarityVersion,
     build_type_map: bool,
-    // Wall-clock deadline for the type-checking phase. `Some` only on the
-    // non-consensus voting paths (mining / block-proposal validation); `None`
-    // on deterministic replay/commit (so consensus stays deterministic). Only
-    // the v2_1 checker (live Nakamoto path) honors it; the pre-Nakamoto v2_05
-    // checker runs solely on historical replay and ignores it.
-    max_time: Option<Duration>,
+    // Wall-clock deadline for the type-checking phase. `TimeTracker::MaxTime` only
+    // on the non-consensus voting paths (mining / block-proposal validation);
+    // `TimeTracker::NoTracking` on deterministic replay/commit (so consensus stays
+    // deterministic).
+    time_tracker: TimeTracker,
 ) -> Result<ContractAnalysis, Box<(StaticCheckError, LimitedCostTracker)>> {
     let mut contract_analysis = ContractAnalysis::new(
         contract_identifier.clone(),
@@ -164,7 +161,7 @@ pub fn run_analysis(
                 &mut contract_analysis,
                 db,
                 build_type_map,
-                max_time,
+                time_tracker,
             ),
             StacksEpochId::Epoch10 => {
                 return Err(StaticCheckErrorKind::Unreachable(

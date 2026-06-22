@@ -19,7 +19,7 @@ use super::analysis::ContractAnalysis;
 use super::types::TypeSignature;
 use crate::vm::analysis::{StaticCheckError, run_analysis};
 use crate::vm::ast::build_ast;
-use crate::vm::costs::LimitedCostTracker;
+use crate::vm::costs::{LimitedCostTracker, TimeTracker};
 use crate::vm::database::MemoryBackingStore;
 use crate::vm::types::QualifiedContractIdentifier;
 
@@ -46,7 +46,7 @@ pub fn mem_type_check(
         epoch,
         version,
         true,
-        None,
+        TimeTracker::NoTracking,
     ) {
         Ok(x) => {
             // return the first type result of the type checker

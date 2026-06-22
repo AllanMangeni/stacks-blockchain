@@ -23,7 +23,7 @@ use clarity::vm::analysis::{AnalysisDatabase, ContractAnalysis};
 use clarity::vm::ast::build_ast;
 use clarity::vm::ast::errors::ParseError;
 use clarity::vm::contexts::{AssetMap, GlobalContext, OwnedEnvironment};
-use clarity::vm::costs::{ExecutionCost, LimitedCostTracker};
+use clarity::vm::costs::{ExecutionCost, LimitedCostTracker, TimeTracker};
 use clarity::vm::database::{
     BurnStateDB, ClarityDatabase, HeadersDB, NULL_BURN_STATE_DB, STXBalance,
 };
@@ -246,7 +246,7 @@ fn run_analysis_free<C: ClarityStorage>(
         // no type map data is used in the clarity_cli
         false,
         // CLI tool: no analysis deadline
-        None,
+        TimeTracker::NoTracking,
     )
 }
 
@@ -283,7 +283,7 @@ fn run_analysis<C: ClarityStorage>(
         // no type map data is used in the clarity_cli
         false,
         // CLI tool: no analysis deadline
-        None,
+        TimeTracker::NoTracking,
     )
 }
 

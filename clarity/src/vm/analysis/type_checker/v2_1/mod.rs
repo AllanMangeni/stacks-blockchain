@@ -18,7 +18,6 @@ pub mod contexts;
 pub mod natives;
 
 use std::collections::BTreeMap;
-use std::time::Duration;
 
 use stacks_common::types::StacksEpochId;
 
@@ -135,7 +134,7 @@ impl TypeChecker<'_, '_> {
         contract_analysis: &mut ContractAnalysis,
         analysis_db: &mut AnalysisDatabase,
         build_type_map: bool,
-        max_time: Option<Duration>,
+        time_tracker: TimeTracker,
     ) -> Result<(), StaticCheckError> {
         let cost_track = contract_analysis.take_contract_cost_tracker();
         let mut command = TypeChecker::new(
@@ -145,7 +144,7 @@ impl TypeChecker<'_, '_> {
             &contract_analysis.contract_identifier,
             &contract_analysis.clarity_version,
             build_type_map,
-            max_time,
+            time_tracker,
         );
         // run the analysis, and replace the cost tracker whether or not the
         //   analysis succeeded.
@@ -1067,7 +1066,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         contract_identifier: &QualifiedContractIdentifier,
         clarity_version: &ClarityVersion,
         build_type_map: bool,
-        max_time: Option<Duration>,
+        time_tracker: TimeTracker,
     ) -> TypeChecker<'a, 'b> {
         Self {
             epoch: *epoch,
@@ -1077,7 +1076,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
             function_return_tracker: None,
             type_map: TypeMap::new(build_type_map),
             clarity_version: *clarity_version,
-            time_tracker: TimeTracker::from_opt_max_time(max_time),
+            time_tracker,
         }
     }
 

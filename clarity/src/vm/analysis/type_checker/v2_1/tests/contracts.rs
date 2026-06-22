@@ -27,7 +27,7 @@ use crate::vm::analysis::{
     mem_type_check as mem_run_analysis, run_analysis,
 };
 use crate::vm::ast::parse;
-use crate::vm::costs::LimitedCostTracker;
+use crate::vm::costs::{LimitedCostTracker, TimeTracker};
 use crate::vm::database::MemoryBackingStore;
 use crate::vm::tests::test_clarity_versions;
 use crate::vm::types::signatures::CallableSubtype;
@@ -83,7 +83,7 @@ pub fn type_check_version(
         epoch,
         version,
         false,
-        None,
+        TimeTracker::NoTracking,
     )
     .map_err(|e| e.0)
 }

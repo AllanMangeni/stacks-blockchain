@@ -24,7 +24,7 @@ use crate::vm::analysis::{
 use crate::vm::ast::ContractAST;
 use crate::vm::ast::errors::{ParseError, ParseErrorKind};
 use crate::vm::contexts::{AssetMap, ExecutionState, InvocationContext, OwnedEnvironment};
-use crate::vm::costs::{ExecutionCost, LimitedCostTracker};
+use crate::vm::costs::{ExecutionCost, LimitedCostTracker, TimeTracker};
 use crate::vm::database::ClarityDatabase;
 use crate::vm::errors::{ClarityEvalError, VmExecutionError};
 use crate::vm::events::StacksTransactionEvent;
@@ -293,7 +293,7 @@ pub trait TransactionConnection: ClarityConnection {
     /// Analyze a provided smart contract with an optional wall-clock deadline on the
     /// type-checking phase, but do not write the analysis to the AnalysisDatabase.
     ///
-    /// `max_execution_time` must be `Some` only on the non-consensus voting paths
+    /// `max_time` must be `Some` only on the non-consensus voting paths
     /// (block assembly / block-proposal validation) and `None` on deterministic
     /// replay/commit, so consensus stays deterministic. When the deadline elapses
     /// the analysis aborts with [`ClarityError::AnalysisTimeExpired`].
@@ -302,7 +302,7 @@ pub trait TransactionConnection: ClarityConnection {
         identifier: &QualifiedContractIdentifier,
         clarity_version: ClarityVersion,
         contract_content: &str,
-        max_execution_time: Option<Duration>,
+        max_time: Option<Duration>,
     ) -> Result<(ContractAST, ContractAnalysis), ClarityError> {
         let epoch_id = self.get_epoch();
 
@@ -320,6 +320,9 @@ pub trait TransactionConnection: ClarityConnection {
                 Err(e) => return (cost_track, Err(e.into())),
             };
 
+            // Start the analysis clock here (after AST building) so the budget bounds only
+            // the analysis phase. `NoTracking` when `max_time` is `None` (replay/commit).
+            let time_tracker = TimeTracker::from_opt_max_time(max_time);
             let result = analysis::run_analysis(
                 identifier,
                 &contract_ast.expressions,
@@ -329,7 +332,7 @@ pub trait TransactionConnection: ClarityConnection {
                 epoch_id,
                 clarity_version,
                 false,
-                max_execution_time,
+                time_tracker,
             );
 
             match result {
