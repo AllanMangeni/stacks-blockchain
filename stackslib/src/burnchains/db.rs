@@ -965,14 +965,15 @@ impl BurnchainDB {
         )
         .map_err(DBError::from)
     }
+}
 
-    // Raw-row test fixture writers. Each helper owns its table's column
-    // list so fixtures can't drift from the schema; values are raw
-    // TEXT/ints because fixtures use readable labels, not valid hashes
-    // (which the typed write paths would reject).
-
+// Raw-row test fixture writers. Each helper owns its table's column
+// list so fixtures can't drift from the schema; values are raw
+// TEXT/ints because fixtures use readable labels, not valid hashes
+// (which the typed write paths would reject).
+#[cfg(test)]
+impl BurnchainDB {
     /// Insert a `burnchain_db_block_headers` row with no transactions.
-    #[cfg(test)]
     pub fn test_insert_block_header_row(
         conn: &Connection,
         block_height: u64,
@@ -989,7 +990,6 @@ impl BurnchainDB {
     }
 
     /// Insert a `burnchain_db_block_ops` row with an opaque op payload.
-    #[cfg(test)]
     pub fn test_insert_block_ops_row(
         conn: &Connection,
         block_hash: &str,
@@ -1004,7 +1004,6 @@ impl BurnchainDB {
     }
 
     /// Insert a minimal `block_commit_metadata` row.
-    #[cfg(test)]
     pub fn test_insert_block_commit_metadata_row(
         conn: &Connection,
         burn_block_hash: &str,
@@ -1028,7 +1027,6 @@ impl BurnchainDB {
     }
 
     /// Insert an `anchor_blocks` row.
-    #[cfg(test)]
     pub fn test_insert_anchor_block_row(
         conn: &Connection,
         reward_cycle: u64,
@@ -1041,7 +1039,6 @@ impl BurnchainDB {
     }
 
     /// Insert an `overrides` row.
-    #[cfg(test)]
     pub fn test_insert_override_row(
         conn: &Connection,
         reward_cycle: u64,
@@ -1053,7 +1050,9 @@ impl BurnchainDB {
         )?;
         Ok(())
     }
+}
 
+impl BurnchainDB {
     // do NOT call directly; only call directly in tests.
     // This is only `pub` because the tests for it live in a different file.
     pub fn store_new_burnchain_block_ops_unchecked(
