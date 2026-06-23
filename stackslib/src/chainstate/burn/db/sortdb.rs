@@ -4557,7 +4557,7 @@ impl SortitionDB {
     /// Get the distinct burn header hashes of all snapshots, forks included.
     /// Only on a squashed sortition DB is this exactly the canonical
     /// burnchain.
-    pub(crate) fn get_all_snapshot_burn_header_hashes(
+    pub fn get_all_snapshot_burn_header_hashes(
         conn: &Connection,
     ) -> Result<Vec<BurnchainHeaderHash>, db_error> {
         let mut stmt = conn.prepare("SELECT DISTINCT burn_header_hash FROM snapshots")?;
@@ -4568,7 +4568,7 @@ impl SortitionDB {
     /// Get the burn header hash of the snapshot with the given sortition
     /// ID, or `None` if no such snapshot exists. Returns the raw stored
     /// TEXT so callers can preserve the value byte-for-byte.
-    pub(crate) fn get_snapshot_burn_header_hash(
+    pub fn get_snapshot_burn_header_hash(
         conn: &Connection,
         sortition_id: &SortitionId,
     ) -> Result<Option<String>, db_error> {
