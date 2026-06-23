@@ -43,6 +43,10 @@ pub(super) const COPIED_TABLES: &[&str] = &[
 /// keeps the dst complete and drift-guarded without copying rows.
 pub(super) const SCHEMA_ONLY_TABLES: &[&str] = &["overrides"];
 
+/// The canonical burn-hash set staged by [`populate_canonical_burn_hashes`],
+/// as a SELECT fragment.
+const CANONICAL_BURN_HASHES_SQL: &str = "SELECT burn_header_hash FROM canonical_burn_hashes";
+
 /// Every table whose schema must exist in the squashed dst (copied + schema-only).
 fn all_required_tables() -> Vec<&'static str> {
     COPIED_TABLES
@@ -62,10 +66,6 @@ pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(
         "COPIED_TABLES (to copy) or SCHEMA_ONLY_TABLES (to skip) in snapshot/burnchain.rs",
     )
 }
-
-/// The canonical burn-hash set staged by [`populate_canonical_burn_hashes`],
-/// as a SELECT fragment.
-const CANONICAL_BURN_HASHES_SQL: &str = "SELECT burn_header_hash FROM canonical_burn_hashes";
 
 /// Row-count statistics returned by [`copy_burnchain_db`].
 #[derive(Debug, Clone)]
