@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::mem::replace;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use clarity_types::representations::ClarityName;
 use serde::Serialize;
@@ -1768,7 +1768,7 @@ impl<'a, 'hooks> GlobalContext<'a, 'hooks> {
             epoch_id,
             chain_id,
             eval_hooks: None,
-            execution_time_tracker: TimeTracker::NoTracking,
+            execution_time_tracker: TimeTracker::unlimited(),
             abort_callback: AbortCallback::None,
         }
     }
@@ -1778,10 +1778,7 @@ impl<'a, 'hooks> GlobalContext<'a, 'hooks> {
     }
 
     pub fn set_max_execution_time(&mut self, max_execution_time: Duration) {
-        self.execution_time_tracker = TimeTracker::MaxTime {
-            start_time: Instant::now(),
-            max_duration: max_execution_time,
-        }
+        self.execution_time_tracker = TimeTracker::from_max_duration(max_execution_time);
     }
 
     fn get_asset_map(&mut self) -> Result<&mut AssetMap, VmExecutionError> {

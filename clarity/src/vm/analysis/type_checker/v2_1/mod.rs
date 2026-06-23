@@ -1081,9 +1081,9 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         }
     }
 
-    /// Per-node analysis abort check. Mirrors eval's `check_interpreter_abort_condition`:
-    /// it is invoked from the per-expression type-check loop (`type_check`),
-    /// independent of cost accounting, so any unbounded analysis path is bounded.
+    /// Per-node analysis abort check.
+    /// It is invoked from the per-expression type-check loop ([`Self::type_check`]),
+    /// independent of cost accounting.
     ///
     /// Returns [`StaticCheckErrorKind::AnalysisTimeExpired`] once the configured
     /// analysis deadline has elapsed.

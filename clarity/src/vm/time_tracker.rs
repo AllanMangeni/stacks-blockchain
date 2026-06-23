@@ -19,11 +19,12 @@ use std::time::{Duration, Instant};
 /// (Clarity evaluation *or* contract analysis) and signals when a configured
 /// deadline has elapsed.
 ///
-/// `NoTracking` is the deterministic-replay / no-limit case (it must be used on
-/// the commit/replay path so consensus stays deterministic). `MaxTime` is used
-/// only on the non-consensus voting paths — block assembly (mining) and
-/// block-proposal validation (signers) — to bound the CPU a single transaction
-/// can spend.
+/// [`TimeTracker::NoTracking`] is the deterministic-replay / no-limit case (it must be used on
+/// the commit/replay path so consensus stays deterministic).
+///
+/// [`TimeTracker::MaxTime`] is used only on the non-consensus voting paths:
+/// block assembly (mining) and block-proposal validation (signers) to bound the time
+/// a single transaction can spend.
 ///
 /// Time expiration is checked in the following code path:
 /// - `check_interpreter_abort_condition` (eval)
@@ -43,8 +44,7 @@ impl TimeTracker {
     /// tracker will consider the phase bounded by `duration`.
     ///
     /// If `None` is provided, no time tracking is performed and the tracker
-    /// behaves as an unbounded timer. This is useful for deterministic replay,
-    /// testing, or scenarios where no time limit should be enforced.
+    /// behaves as an unlimited timer.
     pub fn from_opt_max_duration(duration: Option<Duration>) -> Self {
         match duration {
             Some(max_duration) => Self::from_max_duration(max_duration),

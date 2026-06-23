@@ -84,7 +84,7 @@ pub fn type_check_version(
         epoch,
         version,
         false,
-        TimeTracker::NoTracking,
+        TimeTracker::unlimited(),
     )
     .map_err(|e| e.0)
 }

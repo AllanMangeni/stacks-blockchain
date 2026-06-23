@@ -35,10 +35,6 @@ mod utils {
 
     /// Run the full analysis pipeline on `snippet` at the latest epoch / Clarity
     /// version with the given `time_tracker`, returning the analysis error (if any).
-    ///
-    /// `time_tracker` bounds the type-checking phase: `TimeTracker::MaxTime` on the
-    /// non-consensus voting paths (mining / block-proposal validation), or
-    /// `TimeTracker::NoTracking` on deterministic replay/commit (no limit).
     pub fn run_analysis_with_tracker(
         snippet: &str,
         time_tracker: TimeTracker,

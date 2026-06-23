@@ -47,7 +47,7 @@ pub fn mem_type_check(
         epoch,
         version,
         true,
-        TimeTracker::NoTracking,
+        TimeTracker::unlimited(),
     ) {
         Ok(x) => {
             // return the first type result of the type checker

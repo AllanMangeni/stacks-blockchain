@@ -247,7 +247,7 @@ fn run_analysis_free<C: ClarityStorage>(
         // no type map data is used in the clarity_cli
         false,
         // CLI tool: no analysis deadline
-        TimeTracker::NoTracking,
+        TimeTracker::unlimited(),
     )
 }
 
@@ -284,7 +284,7 @@ fn run_analysis<C: ClarityStorage>(
         // no type map data is used in the clarity_cli
         false,
         // CLI tool: no analysis deadline
-        TimeTracker::NoTracking,
+        TimeTracker::unlimited(),
     )
 }
 
