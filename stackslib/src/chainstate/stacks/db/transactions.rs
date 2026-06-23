@@ -1383,10 +1383,7 @@ impl StacksChainState {
                 //
                 // `max_analysis_time` bounds the analysis phase on the
                 // non-consensus voting paths (mining / block-proposal validation); it is
-                // `None` on deterministic replay/commit (consensus stays deterministic). An
-                // elapsed deadline surfaces as `ClarityError::AnalysisTimeExpired` and is
-                // routed to a hard `Error::AnalysisTimeExpired` below so the offending
-                // contract-publish is dropped + blacklisted rather than re-mined.
+                // `None` on deterministic replay/commit (consensus stays deterministic).
                 let analysis_resp = clarity_tx.analyze_smart_contract(
                     &contract_id,
                     clarity_version,
@@ -1412,13 +1409,8 @@ impl StacksChainState {
                                     budget.clone(),
                                 ));
                             }
-                            // The analysis (type-checking) phase exceeded its wall-clock deadline
-                            // on a voting path. Route it to a hard error so the miner classifies
-                            // the tx `Problematic` (`is_problematic`) and drops + blacklists it,
-                            // letting the network self-heal instead of re-mining the poison tx.
-                            // This is intentionally NOT keyed on `rejectable_in_epoch` (a soft,
-                            // node-local timeout does not consensus-invalidate a block).
                             ClarityError::AnalysisTimeExpired => {
+                                // The analysis phase exceeded its wall-clock deadline (on a voting path only).
                                 warn!("Contract analysis exceeded the analysis time limit; tx will be dropped from the mempool";
                                       "txid" => %tx.txid(),
                                       "contract_name" => %contract_id,
