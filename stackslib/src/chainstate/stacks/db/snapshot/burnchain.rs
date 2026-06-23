@@ -140,7 +140,6 @@ fn populate_canonical_burn_hashes(
 /// 1. Canonical headers and ops (burn_header_hash filtered)
 /// 2. Canonical block_commit_metadata
 /// 3. anchor_blocks derived from copied commit metadata
-/// 4. overrides derived from copied anchor blocks
 pub fn copy_burnchain_db(
     src_burnchain_db_path: &str,
     dst_burnchain_db_path: &str,
@@ -180,9 +179,8 @@ pub fn copy_burnchain_db(
 }
 
 /// Build the copy specs for the burnchain DB, in dependency order:
-/// canonical headers and ops (burn-hash filtered), commit metadata,
-/// `anchor_blocks` derived from the copied commit metadata, and `overrides`
-/// derived from the copied anchor blocks.
+/// canonical headers and ops (burn-hash filtered), commit metadata, and
+/// `anchor_blocks` derived from the copied commit metadata.
 pub(super) fn burnchain_copy_specs() -> Vec<TableCopySpec> {
     let bhh = CANONICAL_BURN_HASHES_SQL;
     vec![
