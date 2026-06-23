@@ -387,14 +387,7 @@ fn miner_permanently_bans_problematic_txid() {
     ctx.signer_test.shutdown();
 }
 
-/// A definitions-only contract: a contract-publish first runs the analysis (type-checking)
-/// phase, then evaluates any top-level expressions. With no top-level expression, the only
-/// phase that can exceed a deadline is **analysis** — so a rejection of this contract under a
-/// small `max_analysis_time_secs` budget unambiguously certifies it
-const ANALYSIS_ONLY_CONTRACT_SRC: &str =
-    "(define-public (dummy (number uint)) (begin (ok (+ number u1))))";
-
-/// Certifies that a contract-publish whose **type-checking (analysis) phase** exceeds the
+/// Certifies that a contract-publish whose **analysis phase** exceeds the
 /// miner's `max_analysis_time_secs` is classified `Problematic` during block assembly and
 /// dropped from the block (and blacklisted from the mempool), so it is never mined and the
 /// sender's nonce never advances — the on-chain inverse of the pre-fix analysis stall.
@@ -434,7 +427,7 @@ fn miner_drops_contract_publish_on_analysis_time_expired() {
         .submit_contract_deploy(
             &sender_sk,
             deploy_fee,
-            ANALYSIS_ONLY_CONTRACT_SRC,
+            "(define-constant my-const u1)",
             "dummy-analysis",
         )
         .expect("Failed to submit contract deploy");
@@ -465,9 +458,8 @@ fn miner_drops_contract_publish_on_analysis_time_expired() {
 }
 
 /// Certifies that when a miner proposes a block containing a contract-publish whose
-/// **analysis phase** exceeds the node's` block_proposal_max_tx_analysis_time_secs`,
+/// **analysis phase** exceeds the node's `block_proposal_max_tx_analysis_time_secs`,
 /// the signers **reject** the proposal during validation with `ProblematicTransaction`.
-
 #[test]
 #[ignore]
 fn signer_rejects_contract_publish_on_analysis_time_expired() {
@@ -510,17 +502,15 @@ fn signer_rejects_contract_publish_on_analysis_time_expired() {
         .submit_contract_deploy(
             &sender_sk,
             deploy_fee,
-            ANALYSIS_ONLY_CONTRACT_SRC,
+            "(define-constant my-const u1)",
             "dummy-analysis",
         )
         .expect("Failed to submit contract deploy");
     let publish_txid = Txid::from_hex(&txid_hex).expect("Failed to parse publish txid");
 
     info!("------------------------- Ensure signers reject the proposal containing it -------------------------");
-    // The miner (unbounded) proposes a block containing the publish; the signers' node
+    // The miner proposes a block containing the publish; the signers' node
     // validates it with a 0s per-tx analysis budget and rejects the tx as Problematic.
-    // We scan the signer messages directly for a rejection keyed to this txid, which is
-    // robust to the miner immediately reproposing a block without the (failed_txid) tx.
     wait_for(60, || {
         Ok(get_stackerdb_signer_messages()
             .into_iter()
