@@ -20,7 +20,6 @@ use libsigner::v0::messages::{
     BlockRejection, BlockResponse, MessageSlotID, RejectReason, SignerMessage,
 };
 use libsigner::{SignerSession, StackerDBSession};
-use pinny::tag;
 use stacks::burnchains::Txid;
 use stacks::codec::StacksMessageCodec;
 use stacks::core::test_util::{make_stacks_transfer_serialized, to_addr};

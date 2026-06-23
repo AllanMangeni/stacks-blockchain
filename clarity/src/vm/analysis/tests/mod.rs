@@ -468,7 +468,7 @@ fn test_run_analysis_aborts_when_deadline_already_elapsed() {
     );
 }
 
-/// AfFree `TimeTracker` (the deterministic replay/commit path) imposes no
+/// An unlimited [`TimeTracker`] (the deterministic replay/commit path) imposes no
 /// analysis deadline, so a valid contract type-checks successfully.
 #[test]
 fn test_run_analysis_no_tracking_is_not_time_limited() {
