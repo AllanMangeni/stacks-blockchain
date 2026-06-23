@@ -747,7 +747,7 @@ impl NakamotoBlockProposal {
 
         let block_deadline = Instant::now() + Duration::from_secs(timeout_secs);
         let per_tx_max_execution_time = Duration::from_secs(max_tx_execution_time_secs);
-        // Bound the analysis (type-checking) phase during proposal validation by the
+        // Bound the analysis phase during proposal validation by the
         // dedicated per-tx analysis budget, independently of the eval budget above.
         builder.max_analysis_time = Some(Duration::from_secs(max_tx_analysis_time_secs));
         let mut receipts_total = 0u64;

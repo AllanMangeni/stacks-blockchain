@@ -756,7 +756,7 @@ impl NakamotoBlockBuilder {
         }
 
         builder.soft_limit = soft_limit;
-        // Bound the analysis (type-checking) phase of each mined tx by the miner's
+        // Bound the analysis phase of each mined tx by the miner's
         // configured analysis deadline (constant for this builder's lifetime).
         builder.max_analysis_time = settings.max_analysis_time;
 

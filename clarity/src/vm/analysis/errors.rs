@@ -238,7 +238,7 @@ pub enum StaticCheckErrorKind {
     // Time checker errors
     /// Type-checking time exceeds the allowed budget, halting analysis to ensure responsiveness.
     ExecutionTimeExpired,
-    /// Contract-analysis (type-checking) time exceeds the allowed budget, halting analysis to ensure responsiveness.
+    /// Contract-analysis time exceeds the allowed budget, halting analysis to ensure responsiveness.
     /// Distinct from `ExecutionTimeExpired` so an analysis-phase timeout is separable end-to-end.
     AnalysisTimeExpired,
 

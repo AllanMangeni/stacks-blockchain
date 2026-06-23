@@ -133,7 +133,7 @@ pub enum Error {
     Expects(String),
     /// This error indicates that a transaction execution was aborted because it exceeded the maximum allowed execution time.
     ExecutionTimeExpired,
-    /// This error indicates that contract analysis (type-checking) was aborted because it exceeded the maximum allowed analysis time.
+    /// This error indicates that contract analysis was aborted because it exceeded the maximum allowed analysis time.
     /// Distinct from `ExecutionTimeExpired` so an analysis-phase timeout is separable in logs/metrics and in `is_problematic`.
     AnalysisTimeExpired,
 }

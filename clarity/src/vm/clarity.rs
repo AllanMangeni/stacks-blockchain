@@ -65,7 +65,7 @@ pub enum ClarityError {
     },
     /// Transaction exceeded the maximum execution time allowed.
     ExecutionTimeExpired,
-    /// Contract analysis (type-checking) exceeded the maximum analysis time allowed.
+    /// Contract analysis exceeded the maximum analysis time allowed.
     /// Distinct from `ExecutionTimeExpired` so an analysis-phase timeout is separable end-to-end.
     AnalysisTimeExpired,
 }
