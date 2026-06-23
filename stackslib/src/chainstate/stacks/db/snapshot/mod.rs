@@ -24,6 +24,7 @@
 //!
 //! Detectable violations surface as `CorruptionError`s.
 
+mod blocks;
 mod burnchain;
 mod clarity;
 pub(crate) mod common;
@@ -34,6 +35,10 @@ mod sortition;
 #[cfg(test)]
 mod tests;
 
+pub use blocks::{
+    copy_confirmed_epoch2_microblocks, copy_epoch2_block_files, copy_nakamoto_staging_blocks,
+    Epoch2BlockFileCopyStats, Epoch2MicroblockCopyStats, NakamotoBlockCopyStats,
+};
 pub use burnchain::{copy_burnchain_db, BurnchainDbCopyStats};
 pub use clarity::{copy_clarity_side_tables, ClaritySideTableStats};
 pub use index::{copy_index_side_tables, IndexSideTableStats};
