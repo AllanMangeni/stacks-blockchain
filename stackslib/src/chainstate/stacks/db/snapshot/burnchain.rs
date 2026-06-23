@@ -52,19 +52,12 @@ fn all_required_tables() -> Vec<&'static str> {
         .collect()
 }
 
-/// Every table the snapshot recognizes in a source `burnchain.sqlite`: the
-/// row-copied tables plus the schema-only ones. burnchain.sqlite is not
-/// MARF-backed, so there are no MARF infra tables to exempt.
-fn known_burnchain_tables() -> Vec<&'static str> {
-    all_required_tables()
-}
-
 /// The burnchain snapshot's source-schema guard (see [`assert_source_schema`]);
 /// `test_no_unclassified_burnchain_tables` runs it against a fresh schema.
 pub(super) fn assert_source_tables_classified(src_conn: &Connection) -> Result<(), Error> {
     assert_source_schema(
         src_conn,
-        &known_burnchain_tables(),
+        &all_required_tables(),
         "burnchain DB",
         "COPIED_TABLES (to copy) or SCHEMA_ONLY_TABLES (to skip) in snapshot/burnchain.rs",
     )
