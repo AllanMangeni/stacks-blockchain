@@ -16,7 +16,7 @@
 use std::collections::HashSet;
 
 // `::clarity` disambiguates the crate from a sibling `clarity` test module.
-use clarity::vm::costs::ExecutionCost;
+use ::clarity::vm::costs::ExecutionCost;
 use rstest::rstest;
 use rusqlite::{params, Connection};
 use stacks_common::types::chainstate::{
