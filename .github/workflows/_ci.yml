@@ -124,19 +124,21 @@ jobs:
 
   ############################################################################
   ### Release Check
-  ### 
+  ###
   ### Checks if this is a release build
   ### If true, will execute release jobs
+  ###
+  ### Release detection only matters on the public repo. This job is depended
+  ### on only by the release-specific jobs (tests-epoch, create-release); the
+  ### regular CI/test jobs are intentionally decoupled from it, so it is safe
+  ### for this job to be skipped (and cascade-skip those release jobs) on
+  ### private forks.
   ############################################################################
   check-release:
     name: "Check: Release"
     needs:
       - check-changelog
       - check-rustfmt
-    # Release detection only matters on the public repo. This job is depended on
-    # only by the release-specific jobs (tests-epoch, create-release); the regular
-    # CI/test jobs are intentionally decoupled from it, so it is safe for this job
-    # to be skipped (and cascade-skip those release jobs) on private forks.
     if: >-
       github.event.repository.visibility == 'public'
     runs-on: *shared_config
