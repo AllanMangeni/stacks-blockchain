@@ -30,6 +30,7 @@ use crate::chainstate::stacks::index::marf::{MARFOpenOpts, MARF};
 use crate::chainstate::stacks::index::{trie_sql, ClarityMarfTrieId, Error, MARFValue};
 
 mod blocks;
+mod burnchain;
 mod clarity;
 mod index;
 mod sortition;
