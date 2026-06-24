@@ -30,6 +30,7 @@ pub(crate) mod common;
 pub(crate) mod fork_storage;
 mod index;
 mod sortition;
+mod spv;
 
 #[cfg(test)]
 mod tests;
@@ -44,3 +45,4 @@ pub use sortition::{
     copy_sortition_side_tables, copy_sortition_side_tables_with_boundary, SortitionSideTableStats,
     SortitionTipCopyBoundary,
 };
+pub use spv::{copy_spv_headers, SpvHeadersCopyStats};
