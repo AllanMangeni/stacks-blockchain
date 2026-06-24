@@ -273,7 +273,10 @@ impl NakamotoDownloadStateMachine {
             last_block_height,
             loaded_so_far.len()
         );
-        if last_block_height < first_block_height {
+
+        // "less than" is correct because `Self::load_wanted_tenures` interprets
+        // `last_block_height` as exlusive
+        if last_block_height <= first_block_height {
             return Ok(vec![]);
         }
 
