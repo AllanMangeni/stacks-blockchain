@@ -168,12 +168,8 @@ fn test_spv_headers_copy() {
     // chain_work for intervals 0, 1, 2.
     seed_chain_work(&src_path, 3);
 
-    let stats = super::super::spv::copy_spv_headers(
-        src_path.to_str().unwrap(),
-        dst_path.to_str().unwrap(),
-        4500,
-    )
-    .unwrap();
+    let stats =
+        copy_spv_headers(src_path.to_str().unwrap(), dst_path.to_str().unwrap(), 4500).unwrap();
 
     // Headers 0..=4500 = 4501 rows.
     assert_eq!(stats.headers_rows, 4501);
@@ -237,7 +233,7 @@ fn test_spv_headers_copy_round_trip() {
     client.update_chain_work().unwrap();
     drop(client);
 
-    let stats = super::super::spv::copy_spv_headers(
+    let stats = copy_spv_headers(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         boundary,
@@ -318,7 +314,7 @@ fn test_spv_headers_chain_work_boundaries(
     drop(client);
     seed_chain_work(&src_path, src_chain_work_intervals);
 
-    let stats = super::super::spv::copy_spv_headers(
+    let stats = copy_spv_headers(
         src_path.to_str().unwrap(),
         dst_path.to_str().unwrap(),
         burn_height,
@@ -344,11 +340,7 @@ fn test_spv_headers_missing_source_is_error(#[case] stale_destination: bool) {
         std::fs::write(&dst_path, b"stale data").unwrap();
     }
 
-    let result = super::super::spv::copy_spv_headers(
-        src_path.to_str().unwrap(),
-        dst_path.to_str().unwrap(),
-        100,
-    );
+    let result = copy_spv_headers(src_path.to_str().unwrap(), dst_path.to_str().unwrap(), 100);
     assert!(result.is_err(), "missing source should error");
     assert!(
         !src_path.exists(),
@@ -368,12 +360,8 @@ fn test_spv_headers_existing_destination_is_error() {
     create_spv_headers_db(&src_path);
     std::fs::write(&dst_path, b"stale data").unwrap();
 
-    let err = super::super::spv::copy_spv_headers(
-        src_path.to_str().unwrap(),
-        dst_path.to_str().unwrap(),
-        100,
-    )
-    .expect_err("existing destination should error");
+    let err = copy_spv_headers(src_path.to_str().unwrap(), dst_path.to_str().unwrap(), 100)
+        .expect_err("existing destination should error");
     assert!(
         matches!(err, Error::DestinationExists(_)),
         "expected DestinationExists, got {err:?}"
