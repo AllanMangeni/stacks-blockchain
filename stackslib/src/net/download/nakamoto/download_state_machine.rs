@@ -286,12 +286,6 @@ impl NakamotoDownloadStateMachine {
             loaded_so_far.len()
         );
 
-        // "less than or equal" is correct because `Self::load_wanted_tenures` interprets
-        // `last_block_height` as exclusive
-        if last_block_height <= first_block_height {
-            return Ok(vec![]);
-        }
-
         let wanted_tenures = Self::load_wanted_tenures(
             sortdb,
             &tip.sortition_id,
