@@ -4306,3 +4306,31 @@ fn test_contract_call_with_non_callable_constant_target(
         }
     }
 }
+
+fn test_clarity2_inner_type_check_type_aborts_when_deadline_elapsed() {
+    use std::time::Duration;
+
+    use crate::vm::costs::LimitedCostTracker;
+    use crate::vm::database::MemoryBackingStore;
+    use crate::vm::time_tracker::TimeTracker;
+
+    let mut marf = MemoryBackingStore::new();
+    let mut db = marf.as_analysis_db();
+    let mut tracker = LimitedCostTracker::new_free();
+
+    let result = super::clarity2_inner_type_check_type(
+        &mut db,
+        None,
+        &BoolType,
+        &BoolType,
+        1,
+        &mut tracker,
+        // A zero-duration deadline is already elapsed at the first check.
+        &TimeTracker::from_max_duration(Duration::ZERO),
+    );
+
+    assert!(
+        matches!(result, Err(ref e) if matches!(*e.err, StaticCheckErrorKind::AnalysisTimeExpired)),
+        "expected AnalysisTimeExpired, got {result:?}"
+    );
+}
