@@ -49,6 +49,20 @@ use crate::vm::types::QualifiedContractIdentifier;
 #[cfg(feature = "rusqlite")]
 use crate::vm::types::TypeSignature;
 
+/// Cooperative analysis-deadline check shared by analysis passes
+///
+/// This is the single place the analysis-timeout error is constructed. The deadline is
+/// `TimeTracker::MaxTime` only on the non-consensus voting paths (mining / block-proposal
+/// validation); on the deterministic replay/commit path it is `TimeTracker::NoTracking`,
+/// so this never fires during consensus and the surfaced `AnalysisTimeExpired` cannot
+/// affect block validity.
+pub(crate) fn check_analysis_timeout(time_tracker: &TimeTracker) -> Result<(), StaticCheckError> {
+    if time_tracker.is_expired() {
+        return Err(StaticCheckErrorKind::AnalysisTimeExpired.into());
+    }
+    Ok(())
+}
+
 /// Used by CLI tools like the docs generator. Not used in production
 #[cfg(feature = "rusqlite")]
 pub fn mem_type_check(
@@ -143,7 +157,7 @@ pub fn run_analysis(
         version,
     );
     let result = analysis_db.execute(|db| {
-        ReadOnlyChecker::run_pass(&epoch, &mut contract_analysis, db)?;
+        ReadOnlyChecker::run_pass(&epoch, &mut contract_analysis, db, time_tracker)?;
         match epoch {
             StacksEpochId::Epoch20 | StacksEpochId::Epoch2_05 => {
                 TypeChecker2_05::run_pass(&epoch, &mut contract_analysis, db, build_type_map)
@@ -171,8 +185,11 @@ pub fn run_analysis(
                 .into());
             }
         }?;
-        TraitChecker::run_pass(&epoch, &mut contract_analysis, db)?;
+        TraitChecker::run_pass(&epoch, &mut contract_analysis, db, time_tracker)?;
         ArithmeticOnlyChecker::check_contract_cost_eligible(&mut contract_analysis);
+
+        // Final boundary check on the analysis passes
+        check_analysis_timeout(&time_tracker)?;
 
         if STORE_CONTRACT_SRC_INTERFACE {
             let interface = build_contract_interface(&contract_analysis)?;

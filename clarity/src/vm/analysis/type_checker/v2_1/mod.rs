@@ -26,11 +26,11 @@ pub use self::natives::{SimpleNativeFunction, TypedNativeFunction};
 use super::ContractAnalysis;
 use super::contexts::{TypeMap, TypingContext};
 use crate::vm::ClarityVersion;
-use crate::vm::analysis::AnalysisDatabase;
 pub use crate::vm::analysis::errors::{
     StaticCheckError, StaticCheckErrorKind, SyntaxBindingErrorType, check_argument_count,
     check_arguments_at_least, check_arguments_at_most,
 };
+use crate::vm::analysis::{AnalysisDatabase, check_analysis_timeout};
 use crate::vm::costs::cost_functions::ClarityCostFunction;
 use crate::vm::costs::{
     CostErrors, CostOverflowingMath, CostTracker, ExecutionCost, LimitedCostTracker,
@@ -756,19 +756,6 @@ fn clarity2_check_functions_compatible<T: CostTracker>(
     Ok(true)
 }
 
-/// Cooperative analysis-deadline check for the trait-compliance / type-admission
-/// recursion, which is threaded a `&TimeTracker` directly (it cannot call
-/// [`TypeChecker::check_analysis_abort_condition`] because it only holds the
-/// type-checker's `cost_track`, not the type-checker itself).
-///
-/// This is the single place the analysis-timeout error is constructed.
-fn check_analysis_timeout(time_tracker: &TimeTracker) -> Result<(), StaticCheckError> {
-    if time_tracker.is_expired() {
-        return Err(StaticCheckErrorKind::AnalysisTimeExpired.into());
-    }
-    Ok(())
-}
-
 /// Returns Ok if actual_trait is compliant with expected_trait.
 /// This means that actual_trait implements all functions from expected_trait
 /// with compatible functions, and may optionally include other functions not
@@ -1140,16 +1127,6 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         }
     }
 
-    /// Per-node analysis abort check.
-    /// It is invoked from the per-expression type-check loop ([`Self::type_check`]),
-    /// independent of cost accounting.
-    ///
-    /// Returns [`StaticCheckErrorKind::AnalysisTimeExpired`] once the configured
-    /// analysis deadline has elapsed.
-    fn check_analysis_abort_condition(&self) -> Result<(), StaticCheckError> {
-        check_analysis_timeout(&self.time_tracker)
-    }
-
     fn into_contract_analysis(
         self,
         contract_analysis: &mut ContractAnalysis,
@@ -1262,7 +1239,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         context: &TypingContext,
     ) -> Result<TypeSignature, StaticCheckError> {
         // Per-node analysis deadline check (independent of cost accounting).
-        self.check_analysis_abort_condition()?;
+        check_analysis_timeout(&self.time_tracker)?;
 
         runtime_cost(ClarityCostFunction::AnalysisVisit, self, 0)?;
 

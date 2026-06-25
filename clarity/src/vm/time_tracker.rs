@@ -25,10 +25,7 @@ use std::time::{Duration, Instant};
 /// [`TimeTracker::MaxTime`] is used only on the non-consensus voting paths:
 /// block assembly (mining) and block-proposal validation (signers) to bound the time
 /// a single transaction can spend.
-///
-/// Time expiration is checked in the following code path:
-/// - `check_interpreter_abort_condition` (eval)
-/// - `TypeChecker::check_analysis_abort_condition` (analysis).
+#[derive(Clone, Copy)]
 pub enum TimeTracker {
     NoTracking,
     MaxTime {
