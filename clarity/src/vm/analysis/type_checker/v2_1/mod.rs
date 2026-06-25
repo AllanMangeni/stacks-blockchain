@@ -760,6 +760,7 @@ fn clarity2_check_functions_compatible<T: CostTracker>(
 /// This means that actual_trait implements all functions from expected_trait
 /// with compatible functions, and may optionally include other functions not
 /// included in expected_trait.
+#[allow(clippy::too_many_arguments)]
 pub fn clarity2_trait_check_trait_compliance<T: CostTracker>(
     db: &mut AnalysisDatabase,
     contract_context: Option<&ContractContext>,
