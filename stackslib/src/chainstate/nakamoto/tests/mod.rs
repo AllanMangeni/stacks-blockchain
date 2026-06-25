@@ -57,7 +57,7 @@ use crate::chainstate::nakamoto::staging_blocks::{
 use crate::chainstate::nakamoto::tenure::NakamotoTenureEvent;
 use crate::chainstate::nakamoto::tests::node::TestStacker;
 use crate::chainstate::nakamoto::{
-    query_row, NakamotoBlock, NakamotoBlockHeader, NakamotoChainState,
+    query_row, NakamotoBlock, NakamotoBlockHeader, NakamotoChainState, NAKAMOTO_BLOCK_VERSION,
 };
 use crate::chainstate::stacks::boot::{
     NakamotoSignerEntry, RewardSet, MINERS_NAME, SIGNERS_VOTING_FUNCTION_NAME, SIGNERS_VOTING_NAME,
@@ -195,7 +195,7 @@ fn codec_nakamoto_header() {
 pub fn test_nakamoto_first_tenure_block_syntactic_validation() {
     let private_key = StacksPrivateKey::random();
     let header = NakamotoBlockHeader {
-        version: 1,
+        version: NAKAMOTO_BLOCK_VERSION,
         chain_length: 2,
         burn_spent: 3,
         consensus_hash: ConsensusHash([0x04; 20]),
@@ -483,6 +483,41 @@ pub fn test_nakamoto_first_tenure_block_syntactic_validation() {
     assert_eq!(block.get_tenure_extend_tx_payload(), None);
     assert_eq!(block.get_vrf_proof(), Some(&proof));
     assert!(block.validate_transactions_static(false, 0x80000000, StacksEpochId::Epoch30));
+
+    // The header version is the *last* static check, so the block above is
+    // otherwise-valid and isolates the version gate. The expected version is
+    // fixed per epoch (`NAKAMOTO_BLOCK_VERSION`), and the shadow-block high bit
+    // (0x80) is ignored when checking it.
+    let valid_txs = vec![tenure_change_tx.clone(), coinbase_tx.clone()];
+
+    // The correct version still validates with the shadow-block bit set.
+    let mut shadow_header = header.clone();
+    shadow_header.version = NAKAMOTO_BLOCK_VERSION | 0x80;
+    let block = NakamotoBlock {
+        header: shadow_header,
+        txs: valid_txs.clone(),
+    };
+    assert!(block.validate_transactions_static(false, 0x80000000, StacksEpochId::Epoch30));
+
+    // Any other version is rejected, with or without the shadow-block bit. This
+    // includes version 1, which was the value used before the version field was
+    // enforced.
+    for bad_version in [
+        NAKAMOTO_BLOCK_VERSION.wrapping_add(1),
+        NAKAMOTO_BLOCK_VERSION.wrapping_add(2),
+        NAKAMOTO_BLOCK_VERSION.wrapping_add(2) | 0x80,
+    ] {
+        let mut bad_header = header.clone();
+        bad_header.version = bad_version;
+        let block = NakamotoBlock {
+            header: bad_header,
+            txs: valid_txs.clone(),
+        };
+        assert!(
+            !block.validate_transactions_static(false, 0x80000000, StacksEpochId::Epoch30),
+            "header version {bad_version:#x} should be rejected"
+        );
+    }
 
     // syntactically valid non-tenure-start block only if we have a syntactically valid tenure change which is not sortition-induced,
     // or we don't have one at all.
