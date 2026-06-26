@@ -465,8 +465,6 @@ pub fn run_squash(args: SquashArgs) {
     let tenure_start_bitcoin_height = args.tenure_start_bitcoin_height;
     let db_config = read_db_config(&paths.index.db);
 
-    let out_root = prepare_output_dir(&args, db_config.mainnet);
-
     let pox = build_pox_constants(db_config.mainnet, args.config.as_deref());
 
     // A squashed snapshot is only usable from epoch 3.4 onwards.
@@ -479,6 +477,8 @@ pub fn run_squash(args: SquashArgs) {
     let targets = resolve_targets(&paths, tenure_start_bitcoin_height, &db_config, &pox);
     let stacks_height = targets.stacks_height;
     let squash_bitcoin_height = targets.squash_bitcoin_height;
+
+    let out_root = prepare_output_dir(&args, db_config.mainnet);
 
     // Phase 1: Squash & Copy
     let outputs = squash_marfs(&plan, &paths, &out_root, &targets, &pox);
