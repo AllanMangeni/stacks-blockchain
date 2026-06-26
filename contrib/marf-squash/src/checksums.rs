@@ -1,4 +1,19 @@
-//! SHA-256 checksum computation and directory traversal for GSS artifacts.
+// Copyright (C) 2026 Stacks Open Internet Foundation
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! SHA-256 checksum computation and directory traversal for PCS artifacts.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -7,7 +22,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use crate::layout::{GSS_MANIFEST, SQLITE_SIDECAR_EXTENSIONS};
+use crate::layout::{PCS_MANIFEST, SQLITE_SIDECAR_EXTENSIONS};
 
 /// Compute SHA-256 checksums for selected files in `out_dir`, allowing a set of
 /// files to be present on disk without materializing individual checksum
@@ -71,7 +86,7 @@ fn checksum_entry(
     let rel_str = rel.to_string_lossy().replace('\\', "/");
 
     // Skip the manifest files themselves.
-    if rel_str == GSS_MANIFEST {
+    if rel_str == PCS_MANIFEST {
         return Ok(None);
     }
 
@@ -157,7 +172,7 @@ pub fn collect_files_recursive(
         // Reject symlinks.
         if metadata.is_symlink() {
             return Err(format!(
-                "symlink found in GSS directory: {}",
+                "symlink found in PCS directory: {}",
                 path.strip_prefix(base).unwrap_or(&path).display()
             ));
         }
@@ -169,7 +184,7 @@ pub fn collect_files_recursive(
 
         if !metadata.is_file() {
             return Err(format!(
-                "non-regular file in GSS directory: {}",
+                "non-regular file in PCS directory: {}",
                 path.strip_prefix(base).unwrap_or(&path).display()
             ));
         }

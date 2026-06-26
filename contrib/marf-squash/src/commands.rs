@@ -1,3 +1,18 @@
+// Copyright (C) 2026 Stacks Open Internet Foundation
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 use std::path::{Path, PathBuf};
 
 use stackslib::chainstate::stacks::db::snapshot::{
@@ -48,7 +63,6 @@ impl SquashPlan {
             );
             std::process::exit(1);
         }
-        // Fail fast on invalid flag combos, before any output is created:
         // --blocks copies into the squashed index, --bitcoin needs the squashed
         // sortition DB.
         ensure_flag_requires("blocks", plan.blocks, "index", plan.index);
@@ -61,9 +75,9 @@ impl SquashPlan {
         self.clarity || self.index || self.sortition || self.blocks || self.bitcoin
     }
 
-    /// Whether this is a complete GSS (all three MARFs + blocks + bitcoin aux) --
+    /// Whether this is a complete PCS (all three MARFs + blocks + bitcoin aux) --
     /// the only case for which a manifest is written.
-    pub fn is_full_gss(&self) -> bool {
+    pub fn is_full_pcs(&self) -> bool {
         self.clarity && self.index && self.sortition && self.blocks && self.bitcoin
     }
 }
@@ -86,9 +100,7 @@ fn sortition_tip_copy_boundary(targets: &CanonicalSquashTargets) -> SortitionTip
     }
 }
 
-/// Network subdirectories marf-squash can target. A squash requires epoch 3.4
-/// (Nakamoto), so only the persistent Nakamoto networks qualify: mainnet and
-/// the krypton testnet.
+/// Network subdirectories marf-squash can target.
 const KNOWN_NETWORK_SUBDIRS: &[&str] = &["mainnet", "krypton"];
 
 fn is_known_network(subdir: &str) -> bool {
@@ -484,8 +496,8 @@ pub fn run_squash(args: SquashArgs) {
         copy_bitcoin_aux(&args, &out_root, squash_bitcoin_height);
     }
 
-    // Generate manifest only for a complete GSS (all MARFs + blocks + bitcoin aux).
-    if plan.is_full_gss() {
+    // Generate manifest only for a complete PCS (all MARFs + blocks + bitcoin aux).
+    if plan.is_full_pcs() {
         let sort_paths = outputs.sortition.unwrap();
         generate_manifest(ManifestInputs {
             out_dir: &out_root,
@@ -496,7 +508,7 @@ pub fn run_squash(args: SquashArgs) {
             bitcoin_height: squash_bitcoin_height,
             sortition_marf_height: outputs.sortition_marf_height,
             expected_stacks_tip: &targets.stacks_tip,
-            expected_sortition_tip: &targets.sortition_canonical_tip,
+            expected_sortition_tip: &targets.sortition_boundary_tip,
             blocks_section: blocks_stats.unwrap(),
         });
     }
@@ -538,11 +550,11 @@ mod tests {
     }
 
     /// `from_args` over (input flags `clarity,index,sortition,blocks,bitcoin,all`)
-    /// → (expected plan fields `clarity,index,sortition,blocks,bitcoin`, full GSS).
+    /// → (expected plan fields `clarity,index,sortition,blocks,bitcoin`, full PCS).
     /// Each case satisfies the `blocks ⇒ index` / `bitcoin ⇒ sortition`
     /// dependencies, so none triggers the fail-fast exit.
     #[rstest]
-    // --all selects everything (full GSS).
+    // --all selects everything (full PCS).
     #[case((false, false, false, false, false, true), (true, true, true, true, true), true)]
     // --index alone.
     #[case((false, true, false, false, false, false), (false, true, false, false, false), false)]
@@ -553,7 +565,7 @@ mod tests {
     fn from_args_selection(
         #[case] flags: (bool, bool, bool, bool, bool, bool),
         #[case] expected: (bool, bool, bool, bool, bool),
-        #[case] is_full_gss: bool,
+        #[case] is_full_pcs: bool,
     ) {
         let plan = SquashPlan::from_args(&args_with_flags(flags));
         let (e_clarity, e_index, e_sortition, e_blocks, e_bitcoin) = expected;
@@ -562,7 +574,7 @@ mod tests {
         assert_eq!(plan.sortition, e_sortition);
         assert_eq!(plan.blocks, e_blocks);
         assert_eq!(plan.bitcoin, e_bitcoin);
-        assert_eq!(plan.is_full_gss(), is_full_gss);
+        assert_eq!(plan.is_full_pcs(), is_full_pcs);
     }
 
     // The failure paths of `from_args` (no target selected; `--blocks` without

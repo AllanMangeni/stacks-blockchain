@@ -1,4 +1,19 @@
-//! Single source of truth for the GSS on-disk layout: the relative paths of the
+// Copyright (C) 2026 Stacks Open Internet Foundation
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Single source of truth for the PCS on-disk layout: the relative paths of the
 //! databases and directories within a chainstate / squashed-output tree, the
 //! manifest file name, and helpers to derive per-target paths.
 
@@ -23,7 +38,7 @@ pub const BLOCKS_DIR_REL: &str = "chainstate/blocks";
 pub const NAKAMOTO_DB_REL: &str = "chainstate/blocks/nakamoto.sqlite";
 
 /// Manifest file name.
-pub const GSS_MANIFEST: &str = "GSS_manifest.toml";
+pub const PCS_MANIFEST: &str = "PCS_manifest.toml";
 
 /// File extensions that indicate SQLite sidecars (WAL, SHM, journal).
 pub const SQLITE_SIDECAR_EXTENSIONS: &[&str] = &["sqlite-wal", "sqlite-shm", "sqlite-journal"];

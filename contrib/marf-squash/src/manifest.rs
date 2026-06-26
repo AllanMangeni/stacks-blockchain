@@ -1,10 +1,25 @@
-//! `GSS_manifest.toml` — its schema and writer. The manifest is the
-//! self-describing record of a Genesis State Snapshot: the three MARFs' squash
+// Copyright (C) 2026 Stacks Open Internet Foundation
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! `PCS_manifest.toml` - its schema and writer. The manifest is the
+//! self-describing record of a Pruned Chainstate Snapshot: the three MARFs' squash
 //! root node hashes and archival root hashes, the block range, and SHA-256
 //! checksums (file-level for the fixed artifacts, one aggregate hash for the
 //! epoch-2 block archive).
 //!
-//! `squash` writes this for a full GSS (`--all`); nothing in this crate reads it
+//! `squash` writes this for a full PCS (`--all`); nothing in this crate reads it
 //! back. It is the artifact format consumed by an external/offline verifier (a
 //! separate tool). The manifest is part of the untrusted artifact and is not
 //! itself authenticated.
@@ -23,7 +38,7 @@ use crate::checksums::{compute_aggregate_checksum, compute_checksums};
 use crate::db::{
     DbConfig, derive_expected_epoch2_block_rel_paths, read_db_config_from_conn, read_marf_open_opts,
 };
-use crate::layout::{BURNCHAIN_DB_REL, GSS_MANIFEST, HEADERS_DB_REL, NAKAMOTO_DB_REL, TargetPaths};
+use crate::layout::{BURNCHAIN_DB_REL, HEADERS_DB_REL, NAKAMOTO_DB_REL, PCS_MANIFEST, TargetPaths};
 
 #[derive(Serialize, Deserialize)]
 pub struct SquashManifest {
@@ -86,7 +101,7 @@ pub struct ChecksumsSection {
     pub files: BTreeMap<String, String>,
 }
 
-/// The inputs needed to write a GSS manifest: the three squashed MARF output
+/// The inputs needed to write a PCS manifest: the three squashed MARF output
 /// paths, the resolved squash boundary (heights + the anchor tips the squash was
 /// resolved against), and the block-copy stats. Threaded through the manifest
 /// builders so each reads only the fields it needs.
@@ -414,13 +429,13 @@ fn build_checksums_section(
     }
 }
 
-/// Serialize `manifest` to TOML and write it to `<out_dir>/GSS_manifest.toml`.
+/// Serialize `manifest` to TOML and write it to `<out_dir>/PCS_manifest.toml`.
 fn write_manifest_file(out_dir: &Path, manifest: &SquashManifest) {
     let toml_str = toml::to_string(manifest).unwrap_or_else(|e| {
         eprintln!("Failed to serialize manifest: {e}");
         std::process::exit(1);
     });
-    let manifest_path = out_dir.join(GSS_MANIFEST);
+    let manifest_path = out_dir.join(PCS_MANIFEST);
     fs::write(&manifest_path, toml_str).unwrap_or_else(|e| {
         eprintln!(
             "Failed to write manifest to '{}': {e}",
@@ -431,7 +446,7 @@ fn write_manifest_file(out_dir: &Path, manifest: &SquashManifest) {
     println!("Manifest written to {}", manifest_path.display());
 }
 
-/// Generate the GSS manifest. Only called for a complete GSS (all MARFs +
+/// Generate the PCS manifest. Only called for a complete PCS (all MARFs +
 /// blocks + bitcoin aux).
 pub fn generate_manifest(inputs: ManifestInputs) {
     let (clarity_meta, index_meta, sortition_meta) = read_all_marf_metadata(&inputs);

@@ -1,3 +1,18 @@
+// Copyright (C) 2026 Stacks Open Internet Foundation
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 mod checksums;
 mod cli;
 mod commands;
@@ -28,11 +43,11 @@ mod tests {
 
     use crate::checksums::{compute_checksums, sha256_file};
     use crate::cli::{Cli, Command};
-    use crate::layout::GSS_MANIFEST;
+    use crate::layout::PCS_MANIFEST;
 
     //  Helpers
 
-    fn create_test_gss_dir(dir: &std::path::Path, files: &[&str]) {
+    fn create_test_pcs_dir(dir: &std::path::Path, files: &[&str]) {
         for f in files {
             let path = dir.join(f);
             if let Some(parent) = path.parent() {
@@ -85,8 +100,8 @@ mod tests {
     fn test_compute_checksums_clean_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        create_test_gss_dir(dir, &["a.sqlite", "sub/b.sqlite"]);
-        std::fs::write(dir.join(GSS_MANIFEST), "dummy").unwrap();
+        create_test_pcs_dir(dir, &["a.sqlite", "sub/b.sqlite"]);
+        std::fs::write(dir.join(PCS_MANIFEST), "dummy").unwrap();
 
         let checksums = compute_checksums(dir, None, None).unwrap();
         assert_eq!(checksums.len(), 2);
@@ -100,7 +115,7 @@ mod tests {
     fn test_compute_checksums_ignores_sqlite_sidecars() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        create_test_gss_dir(dir, &["a.sqlite", "a.sqlite-wal"]);
+        create_test_pcs_dir(dir, &["a.sqlite", "a.sqlite-wal"]);
 
         let checksums = compute_checksums(dir, None, None).unwrap();
         assert_eq!(checksums.len(), 1);
@@ -111,7 +126,7 @@ mod tests {
     fn test_manifest_rejects_symlinks() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        create_test_gss_dir(dir, &["a.sqlite"]);
+        create_test_pcs_dir(dir, &["a.sqlite"]);
         #[cfg(unix)]
         std::os::unix::fs::symlink(dir.join("a.sqlite"), dir.join("link.sqlite")).unwrap();
 
@@ -127,7 +142,7 @@ mod tests {
     fn test_manifest_rejects_extra_file_in_outdir() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        create_test_gss_dir(dir, &["expected.sqlite", "stale.sqlite"]);
+        create_test_pcs_dir(dir, &["expected.sqlite", "stale.sqlite"]);
 
         let mut expected = std::collections::HashSet::new();
         expected.insert("expected.sqlite".to_string());
