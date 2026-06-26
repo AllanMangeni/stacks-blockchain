@@ -28,16 +28,25 @@ use stackslib::chainstate::stacks::db::{StacksChainState, StacksHeaderInfo};
 /// Canonical Stacks and sortition MARF boundaries that must be squashed together.
 #[derive(Debug, Clone)]
 pub struct CanonicalSquashTargets {
+    /// Tenure-start Stacks block height that Clarity and Index squash to.
     pub stacks_height: u32,
+    /// Tenure-start Stacks tip that Clarity and Index squash to.
     pub stacks_tip: StacksBlockId,
+    /// Consensus hash of the tenure-start tip.
     pub stacks_tip_consensus_hash: ConsensusHash,
+    /// Burn view consensus hash shared by the tenure-start and tenure-end headers.
     pub stacks_tip_burn_view_consensus_hash: ConsensusHash,
+    /// Block hash of the tenure-start tip.
     pub stacks_tip_block_hash: BlockHeaderHash,
-    /// Resolved Bitcoin height of the squash boundary (the tenure tip's `burn_view`).
+    /// Bitcoin height of the squash boundary (the tenure tip's `burn_view`).
     pub squash_bitcoin_height: u32,
     /// Sortition MARF height for `squash_bitcoin_height`.
     pub sortition_marf_height: u32,
+    /// Source canonical burn tip - the fork selector for `MARF::squash_to_path`.
     pub sortition_canonical_tip: SortitionId,
+    /// Squash boundary sortition (at `squash_bitcoin_height`) that the squashed output holds.
+    pub sortition_boundary_tip: SortitionId,
+    /// Sortition DB's first Bitcoin block height (used to derive MARF heights).
     pub first_bitcoin_height: u32,
 }
 
@@ -537,6 +546,7 @@ pub fn resolve_canonical_squash_targets(
     let sortition_marf_height = squash_bitcoin_height - first_bitcoin_height;
 
     let sortition_canonical_tip = canonical_tip.sortition_id.clone();
+    let sortition_boundary_tip = burn_view_snapshot.sortition_id.clone();
 
     validate_runtime_tip_reconstruction(
         &sortition_db,
@@ -554,6 +564,7 @@ pub fn resolve_canonical_squash_targets(
         squash_bitcoin_height,
         sortition_marf_height,
         sortition_canonical_tip,
+        sortition_boundary_tip,
         first_bitcoin_height,
     })
 }
