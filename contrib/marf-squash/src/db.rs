@@ -40,7 +40,7 @@ pub struct DbConfig {
 
 /// Read the network identity from an open index-DB connection's `db_config`.
 pub fn read_db_config_from_conn(conn: &rusqlite::Connection) -> DbConfig {
-    let (mainnet_i, chain_id): (i64, i64) = conn
+    let (mainnet, chain_id): (bool, u32) = conn
         .query_row(
             "SELECT mainnet, chain_id FROM db_config LIMIT 1",
             [],
@@ -50,10 +50,7 @@ pub fn read_db_config_from_conn(conn: &rusqlite::Connection) -> DbConfig {
             eprintln!("Failed to read db_config: {e}");
             std::process::exit(1);
         });
-    DbConfig {
-        mainnet: mainnet_i != 0,
-        chain_id: chain_id as u32,
-    }
+    DbConfig { mainnet, chain_id }
 }
 
 /// Read the network identity from the index DB at `index_db_path` (read-only).
