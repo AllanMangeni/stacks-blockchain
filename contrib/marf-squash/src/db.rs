@@ -17,18 +17,6 @@ pub fn read_marf_open_opts(db_path: &Path) -> MARFOpenOpts {
     open_opts
 }
 
-/// Assert that `blobs_path` is the `.blobs` sidecar of `db_path`. Exits on mismatch.
-pub fn ensure_blobs_match(db_path: &str, blobs_path: &str) {
-    let expected_blobs = PathBuf::from(format!("{db_path}.blobs"));
-    if expected_blobs != Path::new(blobs_path) {
-        eprintln!(
-            "Expected blobs path '{blobs_path}' to match '{}'",
-            expected_blobs.display()
-        );
-        std::process::exit(1);
-    }
-}
-
 /// Network identity read from a chainstate index DB's `db_config`.
 pub struct DbConfig {
     pub mainnet: bool,

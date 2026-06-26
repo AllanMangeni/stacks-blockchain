@@ -8,7 +8,6 @@ use stackslib::chainstate::stacks::db::snapshot::{
 use stackslib::chainstate::stacks::index::MarfTrieId;
 use stackslib::chainstate::stacks::index::marf::{MARF, MARFOpenOpts};
 
-use crate::db::ensure_blobs_match;
 use crate::layout::TargetPaths;
 
 /// Print `msg`, best-effort delete each path, then `exit(1)`. Needed because the
@@ -67,10 +66,6 @@ pub fn squash_and_copy_one<T: MarfTrieId + Send + Sync>(job: SquashJob<T>) {
         open_opts,
     } = job;
     let io = SquashIo { source, out };
-
-    if let Some(ref blobs) = source.blobs {
-        ensure_blobs_match(source.db.to_str().unwrap(), blobs.to_str().unwrap());
-    }
 
     if let Some(parent) = out.db.parent()
         && let Err(e) = fs::create_dir_all(parent)

@@ -19,10 +19,7 @@ use crate::ops::{
     BitcoinAuxFiles, SideTableMode, SquashJob, copy_bitcoin_aux_files, die_with_cleanup,
     squash_and_copy_one,
 };
-use crate::targets::{
-    CanonicalSquashTargets, SquashTargetQuery, resolve_canonical_squash_targets,
-    warn_if_in_prepare_phase,
-};
+use crate::targets::{CanonicalSquashTargets, SquashTargetQuery, resolve_canonical_squash_targets};
 
 /// The resolved set of squash targets for one `squash` invocation. `--all`
 /// selects all five; `from_args` validates that at least one target is selected
@@ -440,13 +437,6 @@ fn resolve_targets(
         targets.stacks_tip,
         targets.squash_bitcoin_height,
         targets.sortition_marf_height
-    );
-
-    // Prepare-phase warning.
-    warn_if_in_prepare_phase(
-        tenure_start_bitcoin_height,
-        pox,
-        targets.first_bitcoin_height,
     );
 
     targets

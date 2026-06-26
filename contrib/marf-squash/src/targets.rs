@@ -542,33 +542,3 @@ pub fn resolve_canonical_squash_targets(
         first_bitcoin_height,
     })
 }
-
-/// Warn if the tenure-start Bitcoin height is inside the Nakamoto prepare
-/// phase. Uses `is_in_naka_prepare_phase()` which excludes the `mod 0`
-/// block (unlike the broader `is_in_prepare_phase()`).
-///
-/// The cycle number is derived from the burn height directly using Nakamoto
-/// prepare-phase semantics: if inside the prepare phase, the corresponding
-/// cycle is the one being prepared for (i.e., the next cycle).
-pub fn warn_if_in_prepare_phase(
-    bitcoin_height: u32,
-    pox: &PoxConstants,
-    first_bitcoin_height: u32,
-) {
-    let bitcoin_height = u64::from(bitcoin_height);
-    let first_bitcoin_height = u64::from(first_bitcoin_height);
-    if pox.is_in_naka_prepare_phase(first_bitcoin_height, bitcoin_height) {
-        // Derive the cycle being prepared for using the same Nakamoto-specific
-        // semantics. In Nakamoto prepare phase (which excludes the mod-0 block),
-        // the corresponding cycle is always current_cycle + 1.
-        let current_cycle = pox.block_height_to_reward_cycle(first_bitcoin_height, bitcoin_height);
-        if let Some(cycle) = current_cycle {
-            let preparing_for = cycle + 1;
-            eprintln!(
-                "Warning: Bitcoin height {bitcoin_height} is inside the Nakamoto prepare \
-                 phase for reward cycle {preparing_for}. The node may stall on startup \
-                 for missing the anchor block for cycle {preparing_for}."
-            );
-        }
-    }
-}
