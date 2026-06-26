@@ -49,6 +49,8 @@ pub struct SquashPlan {
 }
 
 impl SquashPlan {
+    /// Resolve the selected targets from the CLI flags, applying `--all` and
+    /// validating the selection. Exits on an empty or invalid flag combo.
     pub fn from_args(args: &SquashArgs) -> Self {
         let plan = SquashPlan {
             clarity: args.clarity || args.all,
@@ -454,6 +456,8 @@ fn resolve_targets(
     targets
 }
 
+/// Run the `squash` subcommand: resolve the boundary, squash the selected MARFs,
+/// copy block/Bitcoin data, and write the manifest for a full PCS. Exits on error.
 pub fn run_squash(args: SquashArgs) {
     let plan = SquashPlan::from_args(&args);
 

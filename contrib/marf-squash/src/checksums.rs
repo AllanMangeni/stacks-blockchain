@@ -109,6 +109,8 @@ fn checksum_entry(
     Ok(Some((rel_str, hash)))
 }
 
+/// Compute a single SHA-256 over the contents of `rel_paths` (relative to
+/// `base_dir`), hashed in sorted path order so the result is deterministic.
 pub fn compute_aggregate_checksum(base_dir: &Path, rel_paths: &[String]) -> Result<String, String> {
     let mut hasher = Sha256::new();
     let mut sorted_paths: Vec<&String> = rel_paths.iter().collect();

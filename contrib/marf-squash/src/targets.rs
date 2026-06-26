@@ -489,6 +489,11 @@ fn validate_runtime_tip_reconstruction(
     Ok(())
 }
 
+/// Resolve the canonical Stacks and sortition boundaries to squash to from the
+/// tenure starting at `query.tenure_start_bitcoin_height`. Validates that the
+/// tenure is a single burn block long, that its burn view is canonical and
+/// consistent across the tenure-start and tenure-end headers, and that the
+/// boundary reconstructs the tenure-end runtime tip.
 pub fn resolve_canonical_squash_targets(
     query: SquashTargetQuery,
 ) -> Result<CanonicalSquashTargets, String> {
