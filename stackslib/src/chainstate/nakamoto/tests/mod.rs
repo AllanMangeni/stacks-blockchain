@@ -21,7 +21,7 @@ use clarity::util::secp256k1::Secp256k1PrivateKey;
 use clarity::vm::costs::ExecutionCost;
 use clarity::vm::types::StacksAddressExtensions;
 use clarity::vm::{ClarityName, ContractName, Value};
-use libstackerdb::StackerDBChunkData;
+use libstackerdb::{StackerDBChunkData, STACKERDB_MAX_CHUNK_SIZE};
 use rand::distributions::Standard;
 use rand::{thread_rng, Rng, RngCore};
 use rusqlite::params;
@@ -2236,6 +2236,41 @@ fn test_make_miners_stackerdb_config() {
         let stackerdb_config = NakamotoChainState::make_miners_stackerdb_config(sort_db, &tip)
             .unwrap()
             .0;
+        assert_eq!(
+            stackerdb_config.chunk_size,
+            u64::from(STACKERDB_MAX_CHUNK_SIZE),
+            "chunk_size config matches the stackerdb wire cap"
+        );
+        assert_eq!(
+            stackerdb_config.write_freq, 0,
+            "write_freq config has no minimum write interval"
+        );
+        assert_eq!(
+            stackerdb_config.max_writes,
+            u32::MAX,
+            "max_writes config has no write-count limit"
+        );
+        assert_eq!(
+            stackerdb_config.max_neighbors, 200,
+            "max_neighbors config should be 200"
+        );
+        assert!(
+            stackerdb_config.hint_replicas.is_empty(),
+            "hint_replicas config must not provide hint"
+        );
+        assert_eq!(
+            2,
+            stackerdb_config.signers.len(),
+            "signers config must always have exactly two signers (latest and previous sortition winner)"
+        );
+        for (idx, (_addr, slot_count)) in stackerdb_config.signers.iter().enumerate() {
+            // note: addresses checked later in the test
+            assert_eq!(
+                *slot_count, MINER_SLOT_COUNT,
+                "signer at index {idx} must have exactly MINER_SLOT_COUNT slots"
+            );
+        }
+
         eprintln!(
             "stackerdb_config at i = {} (sorition? {}): {:?}",
             &i, sortition, &stackerdb_config
