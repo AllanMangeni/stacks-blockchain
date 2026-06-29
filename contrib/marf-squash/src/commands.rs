@@ -282,11 +282,11 @@ fn copy_blocks(
     });
 
     let src_index_path = paths.index.db.to_str().unwrap();
-    let dst_index_path = index_out.db.to_str().unwrap();
+    let squashed_index_path = index_out.db.to_str().unwrap();
 
-    let mblock_stats = copy_microblock_streams(src_index_path, dst_index_path);
-    let file_stats = copy_epoch2_files(dst_index_path, &src_blocks_dir, &dst_blocks_dir);
-    let nak_stats = copy_nakamoto_blocks(&src_nakamoto, &dst_nakamoto, dst_index_path);
+    let mblock_stats = copy_microblock_streams(src_index_path, squashed_index_path);
+    let file_stats = copy_epoch2_files(squashed_index_path, &src_blocks_dir, &dst_blocks_dir);
+    let nak_stats = copy_nakamoto_blocks(squashed_index_path, &src_nakamoto, &dst_nakamoto);
 
     BlocksSection {
         epoch2x_files: file_stats.files_copied,
@@ -302,10 +302,10 @@ fn copy_blocks(
 /// index DBs. Exits on failure, leaving the partial output in place for inspection.
 fn copy_microblock_streams(
     src_index_path: &str,
-    dst_index_path: &str,
+    squashed_index_path: &str,
 ) -> Epoch2MicroblockCopyStats {
     println!("Copying confirmed epoch-2 microblock streams...");
-    match copy_confirmed_epoch2_microblocks(src_index_path, dst_index_path) {
+    match copy_confirmed_epoch2_microblocks(src_index_path, squashed_index_path) {
         Ok(st) => {
             println!(
                 "Microblock copy complete: streams_copied={}, streams_skipped={}, rows={}, bytes={}",
@@ -326,13 +326,13 @@ fn copy_microblock_streams(
 /// Copy epoch 2.x block files from `src_blocks_dir` to `dst_blocks_dir`,
 /// recording them against the squashed index. Exits on failure.
 fn copy_epoch2_files(
-    dst_index_path: &str,
+    squashed_index_path: &str,
     src_blocks_dir: &Path,
     dst_blocks_dir: &Path,
 ) -> Epoch2BlockFileCopyStats {
     println!("Copying epoch 2.x block files...");
     match copy_epoch2_block_files(
-        dst_index_path,
+        squashed_index_path,
         src_blocks_dir.to_str().unwrap(),
         dst_blocks_dir.to_str().unwrap(),
     ) {
@@ -354,9 +354,9 @@ fn copy_epoch2_files(
 /// them against the squashed index. Exits on failure, leaving the partial output
 /// in place for inspection.
 fn copy_nakamoto_blocks(
+    squashed_index_path: &str,
     src_nakamoto: &Path,
     dst_nakamoto: &Path,
-    dst_index_path: &str,
 ) -> NakamotoBlockCopyStats {
     if !src_nakamoto.exists() {
         eprintln!(
@@ -367,9 +367,9 @@ fn copy_nakamoto_blocks(
     }
     println!("Copying nakamoto staging blocks...");
     match copy_nakamoto_staging_blocks(
+        squashed_index_path,
         src_nakamoto.to_str().unwrap(),
         dst_nakamoto.to_str().unwrap(),
-        dst_index_path,
     ) {
         Ok(st) => {
             println!(
