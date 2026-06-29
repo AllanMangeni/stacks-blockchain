@@ -31,8 +31,7 @@ use crate::layout::{
 };
 use crate::manifest::{BlocksSection, ManifestInputs, generate_manifest};
 use crate::ops::{
-    BitcoinAuxFiles, SideTableMode, SquashJob, copy_bitcoin_aux_files, die_with_cleanup,
-    squash_and_copy_one,
+    BitcoinAuxFiles, SideTableMode, SquashJob, copy_bitcoin_aux_files, squash_and_copy_one,
 };
 use crate::targets::{CanonicalSquashTargets, SquashTargetQuery, resolve_canonical_squash_targets};
 
@@ -285,9 +284,9 @@ fn copy_blocks(
     let src_index_path = paths.index.db.to_str().unwrap();
     let dst_index_path = index_out.db.to_str().unwrap();
 
-    let mblock_stats = copy_microblock_streams(src_index_path, dst_index_path, index_out);
+    let mblock_stats = copy_microblock_streams(src_index_path, dst_index_path);
     let file_stats = copy_epoch2_files(dst_index_path, &src_blocks_dir, &dst_blocks_dir);
-    let nak_stats = copy_nakamoto_blocks(&src_nakamoto, &dst_nakamoto, dst_index_path, index_out);
+    let nak_stats = copy_nakamoto_blocks(&src_nakamoto, &dst_nakamoto, dst_index_path);
 
     BlocksSection {
         epoch2x_files: file_stats.files_copied,
@@ -300,11 +299,10 @@ fn copy_blocks(
 }
 
 /// Copy confirmed epoch-2 microblock streams between the source and squashed
-/// index DBs. On failure, deletes the partial squashed index and exits.
+/// index DBs. Exits on failure, leaving the partial output in place for inspection.
 fn copy_microblock_streams(
     src_index_path: &str,
     dst_index_path: &str,
-    index_out: &TargetPaths,
 ) -> Epoch2MicroblockCopyStats {
     println!("Copying confirmed epoch-2 microblock streams...");
     match copy_confirmed_epoch2_microblocks(src_index_path, dst_index_path) {
@@ -318,10 +316,10 @@ fn copy_microblock_streams(
             );
             st
         }
-        Err(e) => die_with_cleanup(
-            &format!("Failed to copy microblock streams: {e:?}"),
-            &[&index_out.db],
-        ),
+        Err(e) => {
+            eprintln!("Failed to copy microblock streams: {e:?}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -353,13 +351,12 @@ fn copy_epoch2_files(
 }
 
 /// Copy nakamoto staging blocks into the squashed nakamoto.sqlite, recording
-/// them against the squashed index. On failure, deletes the partial nakamoto DB
-/// and squashed index and exits.
+/// them against the squashed index. Exits on failure, leaving the partial output
+/// in place for inspection.
 fn copy_nakamoto_blocks(
     src_nakamoto: &Path,
     dst_nakamoto: &Path,
     dst_index_path: &str,
-    index_out: &TargetPaths,
 ) -> NakamotoBlockCopyStats {
     if !src_nakamoto.exists() {
         eprintln!(
@@ -381,10 +378,10 @@ fn copy_nakamoto_blocks(
             );
             st
         }
-        Err(e) => die_with_cleanup(
-            &format!("Failed to copy nakamoto staging blocks: {e:?}"),
-            &[dst_nakamoto, &index_out.db],
-        ),
+        Err(e) => {
+            eprintln!("Failed to copy nakamoto staging blocks: {e:?}");
+            std::process::exit(1);
+        }
     }
 }
 
