@@ -489,7 +489,7 @@ pub fn run_squash(args: SquashArgs) {
         let i_out = outputs
             .index
             .as_ref()
-            .expect("--blocks requires --index; index_out must be set");
+            .expect("--blocks requires --index; outputs.index must be set");
         copy_blocks(&args, &out_root, &paths, i_out)
     });
 

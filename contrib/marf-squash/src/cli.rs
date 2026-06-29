@@ -64,11 +64,11 @@ pub struct SquashArgs {
     #[arg(long)]
     pub all: bool,
     /// Copy canonical block data (epoch 2.x files, confirmed microblocks, nakamoto.sqlite).
-    /// Requires --index (or --all).
+    /// Requires --index (is implied by --all).
     #[arg(long)]
     pub blocks: bool,
     /// Copy Bitcoin auxiliary files (burnchain.sqlite + headers.sqlite).
-    /// Requires --sortition (or --all).
+    /// Requires --sortition (is implied by --all).
     #[arg(long)]
     pub bitcoin: bool,
     /// Path to the node config TOML file. Used to extract PoX constants
