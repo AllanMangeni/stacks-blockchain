@@ -49,31 +49,31 @@ impl TimeTracker {
         }
     }
 
-    /// Creates a [`TimeTracker::MaxTime`] and starts tracking time immediately.
+    /// Creates a [`Self::MaxTime`] and starts tracking time immediately.
     ///
     /// The elapsed time is measured from the moment this function is called,
     /// and the tracker is configured with the provided maximum duration.
     pub fn from_max_duration(duration: Duration) -> Self {
-        TimeTracker::MaxTime {
+        Self::MaxTime {
             start_time: Instant::now(),
             max_duration: duration,
         }
     }
 
-    /// Creates a [`TimeTracker::NoTracking`] instance.
+    /// Creates a [`Self::NoTracking`] instance.
     ///
     /// In this mode, no elapsed time is recorded and no time limit is enforced.
     /// This can be used when timing is irrelevant or intentionally disabled.
     pub fn unlimited() -> Self {
-        TimeTracker::NoTracking
+        Self::NoTracking
     }
 
     /// Returns `true` if a deadline is configured and has elapsed. Always
     /// `false` for `NoTracking`.
     pub fn is_expired(&self) -> bool {
         match self {
-            TimeTracker::NoTracking => false,
-            TimeTracker::MaxTime {
+            Self::NoTracking => false,
+            Self::MaxTime {
                 start_time,
                 max_duration,
             } => start_time.elapsed() >= *max_duration,
