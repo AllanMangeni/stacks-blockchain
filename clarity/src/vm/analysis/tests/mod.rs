@@ -35,7 +35,7 @@ mod utils {
 
     /// Run the full analysis pipeline on `snippet` at the latest epoch / Clarity
     /// version with the given `time_tracker`, returning the analysis error (if any).
-    pub fn run_analysis_with_tracker(
+    pub fn run_analysis_with_time_tracker(
         snippet: &str,
         time_tracker: TimeTracker,
     ) -> Result<ContractAnalysis, StaticCheckError> {
@@ -455,7 +455,7 @@ fn test_write_attempt_in_readonly() {
 /// [`StaticCheckErrorKind::AnalysisTimeExpired`].
 #[test]
 fn test_run_analysis_aborts_when_deadline_already_elapsed() {
-    let err = utils::run_analysis_with_tracker(
+    let err = utils::run_analysis_with_time_tracker(
         "(define-read-only (foo) (+ 1 1))",
         TimeTracker::from_max_duration(Duration::ZERO),
     )
@@ -472,7 +472,7 @@ fn test_run_analysis_aborts_when_deadline_already_elapsed() {
 /// analysis deadline, so a valid contract type-checks successfully.
 #[test]
 fn test_run_analysis_no_tracking_is_not_time_limited() {
-    let result = utils::run_analysis_with_tracker(
+    let result = utils::run_analysis_with_time_tracker(
         "(define-read-only (foo) (+ 1 1))",
         TimeTracker::unlimited(),
     );
@@ -487,7 +487,7 @@ fn test_run_analysis_no_tracking_is_not_time_limited() {
 /// guards against the per-node check firing spuriously when a deadline is configured.
 #[test]
 fn test_run_analysis_generous_deadline_succeeds() {
-    let result = utils::run_analysis_with_tracker(
+    let result = utils::run_analysis_with_time_tracker(
         "(define-read-only (foo) (+ 1 1))",
         TimeTracker::from_max_duration(Duration::from_secs(300)),
     );
