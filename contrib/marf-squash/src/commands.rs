@@ -404,8 +404,7 @@ fn copy_bitcoin_aux(args: &SquashArgs, out_root: &Path, squash_bitcoin_height: u
 }
 
 /// Resolve the canonical squash targets from the source chainstate/sortition
-/// DBs, log the resolved boundary, and warn if it lands in the prepare phase.
-/// Exits on resolution failure.
+/// DBs and log the resolved boundary. Exits on resolution failure.
 fn resolve_targets(
     paths: &ChainstatePaths,
     tenure_start_bitcoin_height: u32,
