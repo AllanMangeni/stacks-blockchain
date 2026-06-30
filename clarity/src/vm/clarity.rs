@@ -272,13 +272,18 @@ pub trait TransactionConnection: ClarityConnection {
     where
         F: FnOnce(&mut AnalysisDatabase, LimitedCostTracker) -> (LimitedCostTracker, R);
 
-    /// Analyze a provided smart contract with an optional wall-clock deadline on the
-    /// type-checking phase, but do not write the analysis to the AnalysisDatabase.
+    /// Analyze a provided smart contract with an optional wall-clock deadline covering
+    /// AST building and static analysis, but do not write the analysis to the
+    /// AnalysisDatabase.
     ///
     /// `max_time` must be `Some` only on the non-consensus voting paths
     /// (block assembly / block-proposal validation) and `None` on deterministic
     /// replay/commit, so consensus stays deterministic. When the deadline elapses
     /// the analysis aborts with [`ClarityError::AnalysisTimeExpired`].
+    ///
+    /// The clock starts before AST building so that time counts against the budget;
+    /// the deadline itself is only enforced at the cooperative checkpoints inside the
+    /// analysis passes.
     fn analyze_smart_contract(
         &mut self,
         identifier: &QualifiedContractIdentifier,
@@ -289,6 +294,9 @@ pub trait TransactionConnection: ClarityConnection {
         let epoch_id = self.get_epoch();
 
         self.with_analysis_db(|db, mut cost_track| {
+            // Start the analysis clock here and take into account AST building.
+            let time_tracker = TimeTracker::from_opt_max_duration(max_time);
+
             let ast_result = ast::build_ast(
                 identifier,
                 contract_content,
@@ -302,9 +310,6 @@ pub trait TransactionConnection: ClarityConnection {
                 Err(e) => return (cost_track, Err(e.into())),
             };
 
-            // Start the analysis clock here (after AST building) so the budget bounds only
-            // the analysis phase. `NoTracking` when `max_time` is `None` (replay/commit).
-            let time_tracker = TimeTracker::from_opt_max_duration(max_time);
             let result = analysis::run_analysis(
                 identifier,
                 &contract_ast.expressions,

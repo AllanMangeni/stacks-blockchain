@@ -133,6 +133,38 @@ pub fn type_check(
     .map_err(|e| e.0)
 }
 
+/// Run the full static-analysis pipeline (read-only, type, trait and arithmetic
+/// passes) over a parsed contract, optionally persisting the result.
+///
+/// # Arguments
+///
+/// * `contract_identifier` - Identity of the contract being analyzed.
+/// * `expressions` - The parsed top-level expressions (AST) to analyze.
+/// * `analysis_db` - Database used to read referenced contracts and (optionally) write
+///   the resulting analysis.
+/// * `save_contract` - When `true`, the completed analysis is persisted to
+///   `analysis_db`; when `false`, it is only returned to the caller.
+/// * `cost_tracker` - Cost meter bounding the work performed by the analysis. It is
+///   threaded through the passes and handed back to the caller (on both success and
+///   failure) so the consumed budget is preserved.
+/// * `epoch` - Stacks epoch, which selects the type-checker implementation
+///   (2.05 vs 2.1+) and epoch-specific analysis rules.
+/// * `version` - Clarity language version of the contract.
+/// * `build_type_map` - When `true`, the type checker records a full expression →
+///   type map on the resulting analysis (needed by tooling/tests); when `false`, the
+///   map is skipped to save work.
+/// * `time_tracker` - Wall-clock deadline enforced across the analysis passes. The
+///   clock may already have elapsed time on it from AST building by the time it
+///   reaches here. `TimeTracker::MaxTime` is used only on the non-consensus voting
+///   paths (mining / block-proposal validation); `TimeTracker::NoTracking` is used on
+///   the deterministic replay/commit path so consensus stays deterministic, meaning
+///   the deadline never fires there.
+///
+/// # Returns
+///
+/// On success, the completed [`ContractAnalysis`]. On failure, a boxed pair of the
+/// [`StaticCheckError`] and the [`LimitedCostTracker`] recovered from the analysis, so
+/// the caller can continue accounting for the cost already consumed.
 #[allow(clippy::too_many_arguments)]
 pub fn run_analysis(
     contract_identifier: &QualifiedContractIdentifier,
@@ -143,10 +175,6 @@ pub fn run_analysis(
     epoch: StacksEpochId,
     version: ClarityVersion,
     build_type_map: bool,
-    // Wall-clock deadline for the type-checking phase. `TimeTracker::MaxTime` only
-    // on the non-consensus voting paths (mining / block-proposal validation);
-    // `TimeTracker::NoTracking` on deterministic replay/commit (so consensus stays
-    // deterministic).
     time_tracker: TimeTracker,
 ) -> Result<ContractAnalysis, Box<(StaticCheckError, LimitedCostTracker)>> {
     let mut contract_analysis = ContractAnalysis::new(
