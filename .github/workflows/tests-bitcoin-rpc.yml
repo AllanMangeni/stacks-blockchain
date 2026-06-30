@@ -9,10 +9,6 @@ on:
         description: "The test archive file"
         required: true
         type: string
-      btc-version:
-        description: "Bitcoin version"
-        required: true
-        type: string
 
 # Set default permissions
 permissions:
@@ -93,7 +89,6 @@ jobs:
         uses: ./.github/actions/cache/bitcoin
         with:
           action: restore
-          btc-version: ${{ inputs.btc-version }}
      
       # Symlink bitoind to $PATH
       - name: Link Bitcoin Binary
@@ -108,9 +103,9 @@ jobs:
           sudo prlimit --nofile=4096:4096
         
       # Restore nextest test archive cache data
-      - name: Restore Test Archive Cache
+      - name: Restore Nextest Archive Cache
         id: restore_test_cache
-        uses: ./.github/actions/cache/test-archive
+        uses: ./.github/actions/cache/nextest-archive
         with:
           action: restore
           archive-file: ${{ inputs.archive-file }}

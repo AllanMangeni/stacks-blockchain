@@ -55,8 +55,8 @@ jobs:
           tools: nextest
           
       # Restore nextest test archive cache data
-      - name: Restore Test Archive Cache
-        uses: ./.github/actions/cache/test-archive
+      - name: Restore Nextest Archive Cache
+        uses: ./.github/actions/cache/nextest-archive
         with:
           action: restore
           archive-file: ${{ inputs.archive-file }}

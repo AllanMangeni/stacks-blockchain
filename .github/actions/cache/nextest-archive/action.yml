@@ -1,20 +1,27 @@
-name: Cargo Cache
+name: Nextest Archive Cache
 description: |
-    Cargo crate cache management.
+    Nextest binary archive cache management.
 
 inputs:
   action:
     description: "Type of operation (check,restore,create)"
     required: false
     default: "check"
+  archive-file:
+    description: "The test archive file"
+    required: true
+  codecov-binary-path:
+    description: "Code coverage binary path"
+    required: false
+    default: "./target/debug/"
 
 outputs:
   cache-hit:
     description: "Cache Hit"
-    value: ${{ steps.check-cache.outputs.cache-hit }}
+    value: ${{ steps.check_cache.outputs.cache-hit }}
   cache-key:
     description: "Cache Key"
-    value: ${{ steps.generate-keys.outputs.cargo-cache-key }}
+    value: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}
 
 runs:
   using: "composite"
@@ -23,24 +30,19 @@ runs:
     - name: Generate Cache Keys
       id: generate-keys
       uses: ./.github/actions/cache/generate-keys
-      
+  
     # Check if cache data exists
     - name: Check Cache
       if: |
         inputs.action == 'check'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      id: check-cache
+      id: check_cache
       with:
         lookup-only: true
         path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ steps.generate-keys.outputs.cargo-cache-key }}
-        # Allows cache to "fallback" to base branch or `master`
-        restore-keys: ${{ steps.generate-keys.outputs.cargo-cache-key }}
+          ${{ inputs.archive-file }}
+          ${{ inputs.codecov-binary-path }}
+        key: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}
 
     # Restore cache data
     - name: Restore Cache
@@ -49,14 +51,9 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ steps.generate-keys.outputs.cargo-cache-key }}
-        # Allows cache to "fallback" to base branch or `master`
-        restore-keys: ${{ steps.generate-keys.outputs.cargo-cache-key }}
+          ${{ inputs.archive-file }}
+          ${{ inputs.codecov-binary-path }}
+        key: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}
         fail-on-cache-miss: true
 
     # Checkout the code
@@ -65,8 +62,8 @@ runs:
         inputs.action == 'create'
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
-        ref: ${{ github.ref }}
-  
+        ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
     # Setup rust toolchain
     - name: Setup Rust Toolchain
       if: |
@@ -74,7 +71,7 @@ runs:
       uses: ./.github/actions/setup-rust-toolchain
       with:
         components: llvm-tools-preview
-    
+
     #  Install nextest
     - name: Install nextest
       if: |
@@ -91,53 +88,44 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y mold clang
-  
-    # Build the cargo crates
-    - name: Build Cargo Crates
+
+    # Restore the cargo cache (which we may have just built)
+    - name: Restore Cargo Cache
+      if: |
+        inputs.action == 'create'
+      uses: ./.github/actions/cache/cargo
+      with:
+        action: restore
+
+    # Build the nextest archive
+    - name: Build Nextest Archive
       if: |
         inputs.action == 'create'
       shell: bash
       env:
         RUSTFLAGS: "-C instrument-coverage -C linker=clang -C link-arg=-fuse-ld=mold -A warnings"
         CARGO_INCREMENTAL: 0
-      # This command should be kept in sync with the same command in cache/nextest-archive action
+      # This command should be kept in sync with the same command in cache/cargo action
       run: |
+        # Capture the archive file input, then expand the leading ~ to $HOME
+        INPUT_FILE="${{ inputs.archive-file }}"
+        ARCHIVE_FILE="${INPUT_FILE/#\~/$HOME}"
+
         cargo nextest archive \
           --workspace \
           --tests \
           --locked \
           --features monitoring_prom \
-          --archive-file "not_used.tar.zst"
-  
-    # Dynamic cleanup of local workspace crates right after building. We never want them to exist in the produced cache.
-    # These are things like stacks-signer, stacks-inspect, etc. built locally from our codebase.
-    # We must always compile them on-the-fly from current code, as they aren't bumped in version when they are changed.
-    - name: Clean Local Workspace Crates
-      if: |
-        inputs.action == 'create'
-      shell: bash
-      run: |
-        if [ -f Cargo.toml ]; then
-          echo "Identifying local workspace crates to exclude from restored cache..."
-          cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | while read -r crate; do
-            echo "Wiping build artifacts for local crate: $crate"
-            cargo clean -p "$crate"
-          done
-        else
-          echo "ERROR: No Cargo.toml found in the current working directory."
-          exit 1
-        fi
-  
+          --archive-file "$ARCHIVE_FILE"
+
     # Save cache data
+    # Includes contents of ./target/debug because they're needed for both unit tests and code coverage
     - name: Save Cache
       if: |
         inputs.action == 'create'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ steps.generate-keys.outputs.cargo-cache-key }}
+          ${{ inputs.archive-file }}
+          ${{ inputs.codecov-binary-path }}
+        key: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}

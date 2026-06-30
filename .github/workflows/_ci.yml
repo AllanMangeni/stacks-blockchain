@@ -34,7 +34,6 @@ concurrency:
 # Env vars
 env:
   TEST_ARCHIVE_FILE: "~/test_archive.tar.zst"
-  BTC_VERSION: "25.0"
 
 jobs:
   ############################################################################
@@ -49,7 +48,6 @@ jobs:
     runs-on: &shared_config ubuntu-latest
     outputs:
       test-archive-file: ${{ steps.set-env.outputs.test_archive_file }}
-      btc-version: ${{ steps.set-env.outputs.btc_version }}
       job-should-run: ${{ steps.set-env.outputs.job_should_run }}
     steps:
       - name: Export Env Variables
@@ -60,7 +58,6 @@ jobs:
           ARCHIVE_FILE="${INPUT_FILE/#\~/$HOME}"
         
           echo "test_archive_file=$ARCHIVE_FILE" >> $GITHUB_OUTPUT
-          echo "btc_version=${{ env.BTC_VERSION }}" >> $GITHUB_OUTPUT
           
           # Check that evaluates if various jobs should run. Generally we care if it's a workflow dispatch, PR, or merge group.
           echo "job_should_run=${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group' }}" >> $GITHUB_OUTPUT
@@ -206,7 +203,6 @@ jobs:
     uses: ./.github/workflows/setup-test-caches.yml
     with:
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
-      btc-version: ${{ needs.setup-env.outputs.btc-version }}
 
   ############################################################################
   ### Run Stacks Core Tests
@@ -255,7 +251,6 @@ jobs:
     uses: ./.github/workflows/tests-bitcoin-rpc.yml
     with:
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
-      btc-version: ${{ needs.setup-env.outputs.btc-version }}
 
   ############################################################################
   ### Run P2P Tests
