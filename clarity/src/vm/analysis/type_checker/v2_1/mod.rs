@@ -811,7 +811,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
     actual_type: &TypeSignature,
     expected_type: &TypeSignature,
     depth: u8,
-    tracker: &mut T,
+    cost_tracker: &mut T,
     time_tracker: &TimeTracker,
 ) -> Result<TypeSignature, StaticCheckError> {
     if depth > MAX_TYPE_DEPTH {
@@ -837,7 +837,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                 atom_inner_type,
                 expected_inner_type,
                 depth + 1,
-                tracker,
+                cost_tracker,
                 time_tracker,
             )?;
         }
@@ -851,7 +851,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                 &atom_inner_types.0,
                 &expected_inner_types.0,
                 depth + 1,
-                tracker,
+                cost_tracker,
                 time_tracker,
             )?;
             clarity2_inner_type_check_type(
@@ -860,7 +860,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                 &atom_inner_types.1,
                 &expected_inner_types.1,
                 depth + 1,
-                tracker,
+                cost_tracker,
                 time_tracker,
             )?;
         }
@@ -875,7 +875,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                     atom_list_type.get_list_item_type(),
                     expected_list_type.get_list_item_type(),
                     depth + 1,
-                    tracker,
+                    cost_tracker,
                     time_tracker,
                 )?;
             } else {
@@ -907,7 +907,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                             atom_field_type,
                             expected_field_type,
                             depth + 1,
-                            tracker,
+                            cost_tracker,
                             time_tracker,
                         )?;
                     }
@@ -927,9 +927,9 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
         ) => {
             if atom_trait_id != expected_trait_id {
                 let atom_trait =
-                    clarity2_lookup_trait(db, contract_context, atom_trait_id, tracker)?;
+                    clarity2_lookup_trait(db, contract_context, atom_trait_id, cost_tracker)?;
                 let expected_trait =
-                    clarity2_lookup_trait(db, contract_context, expected_trait_id, tracker)?;
+                    clarity2_lookup_trait(db, contract_context, expected_trait_id, cost_tracker)?;
                 clarity2_trait_check_trait_compliance(
                     db,
                     contract_context,
@@ -937,7 +937,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                     &atom_trait,
                     expected_trait_id,
                     &expected_trait,
-                    tracker,
+                    cost_tracker,
                     time_tracker,
                 )?;
             }
@@ -951,13 +951,17 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                     Some(contract) => {
                         runtime_cost(
                             ClarityCostFunction::AnalysisFetchContractEntry,
-                            tracker,
+                            cost_tracker,
                             contract_analysis_size(&contract)?,
                         )?;
                         contract
                     }
                     None => {
-                        runtime_cost(ClarityCostFunction::AnalysisFetchContractEntry, tracker, 1)?;
+                        runtime_cost(
+                            ClarityCostFunction::AnalysisFetchContractEntry,
+                            cost_tracker,
+                            1,
+                        )?;
                         return Err(StaticCheckErrorKind::NoSuchContract(
                             contract_identifier.to_string(),
                         )
@@ -965,7 +969,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                     }
                 };
             let expected_trait =
-                clarity2_lookup_trait(db, contract_context, expected_trait_id, tracker)?;
+                clarity2_lookup_trait(db, contract_context, expected_trait_id, cost_tracker)?;
             contract_to_check.check_trait_compliance(
                 &StacksEpochId::Epoch21,
                 expected_trait_id,
@@ -984,7 +988,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
                     &TypeSignature::CallableType(subtype.clone()),
                     expected_type,
                     depth + 1,
-                    tracker,
+                    cost_tracker,
                     time_tracker,
                 )?;
             }
