@@ -38,7 +38,10 @@ use crate::checksums::{compute_aggregate_checksum, compute_checksums};
 use crate::db::{
     DbConfig, derive_expected_epoch2_block_rel_paths, read_db_config_from_conn, read_marf_open_opts,
 };
-use crate::layout::{BURNCHAIN_DB_REL, HEADERS_DB_REL, NAKAMOTO_DB_REL, PCS_MANIFEST, TargetPaths};
+use crate::layout::{
+    BURNCHAIN_DB_REL, HEADERS_DB_REL, NAKAMOTO_DB_REL, PCS_MANIFEST, TargetPaths,
+    canonical_rel_path,
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct SquashManifest {
@@ -159,7 +162,7 @@ pub fn read_squash_metadata<T: MarfTrieId + std::fmt::Display>(
 /// Insert the relative path of `abs_path` (relative to `base`) into `set`.
 fn insert_expected_rel(base: &Path, abs_path: &Path, set: &mut HashSet<String>) {
     if let Ok(rel) = abs_path.strip_prefix(base) {
-        set.insert(rel.to_string_lossy().replace('\\', "/"));
+        set.insert(canonical_rel_path(rel));
     }
 }
 

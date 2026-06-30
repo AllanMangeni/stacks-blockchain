@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use stacks_common::types::chainstate::StacksBlockId;
-use stacks_common::util::hash::to_hex;
+use stackslib::chainstate::stacks::db::StacksChainState;
 
 /// Relative path of the Clarity MARF within a chainstate tree.
 pub const CLARITY_MARF_REL: &str = "chainstate/vm/clarity/marf.sqlite";
@@ -80,15 +80,20 @@ pub fn chainstate_paths(root: &Path) -> ChainstatePaths {
     }
 }
 
-/// Relative path of an epoch-2.x block file, sharded by the first two bytes of
-/// its index block hash.
+/// A relative path as a `/`-separated string. Normalizes Windows `\` so manifest
+/// entries and checksum keys match across host OSes (no-op on POSIX).
+pub fn canonical_rel_path(rel: &Path) -> String {
+    rel.to_string_lossy().replace('\\', "/")
+}
+
+/// Relative path of an epoch-2.x block file: the blocks dir followed by the
+/// node's own index-hash sharding ([`StacksChainState::index_block_hash_to_rel_path`]).
 pub fn epoch2_block_rel_path(index_block_hash: &StacksBlockId) -> String {
-    let block_hash_bytes = index_block_hash.as_bytes();
     format!(
-        "{BLOCKS_DIR_REL}/{}/{}/{}",
-        to_hex(&block_hash_bytes[0..2]),
-        to_hex(&block_hash_bytes[2..4]),
-        index_block_hash
+        "{BLOCKS_DIR_REL}/{}",
+        canonical_rel_path(&StacksChainState::index_block_hash_to_rel_path(
+            index_block_hash
+        ))
     )
 }
 

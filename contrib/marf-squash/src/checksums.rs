@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use crate::layout::{PCS_MANIFEST, SQLITE_SIDECAR_EXTENSIONS};
+use crate::layout::{PCS_MANIFEST, SQLITE_SIDECAR_EXTENSIONS, canonical_rel_path};
 
 /// Compute SHA-256 checksums for selected files in `out_dir`, allowing a set of
 /// files to be present on disk without materializing individual checksum
@@ -83,7 +83,7 @@ fn checksum_entry(
     let rel = path
         .strip_prefix(out_dir)
         .map_err(|e| format!("strip_prefix: {e}"))?;
-    let rel_str = rel.to_string_lossy().replace('\\', "/");
+    let rel_str = canonical_rel_path(rel);
 
     // Skip the manifest files themselves.
     if rel_str == PCS_MANIFEST {
