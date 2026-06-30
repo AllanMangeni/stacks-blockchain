@@ -25,6 +25,11 @@ use stackslib::chainstate::burn::db::sortdb::{SortitionDB, SortitionHandleConn};
 use stackslib::chainstate::nakamoto::NakamotoChainState;
 use stackslib::chainstate::stacks::db::{StacksChainState, StacksHeaderInfo};
 
+/// Mainnet only: the squash boundary must sit at least this many Bitcoin blocks
+/// behind the canonical burn tip, so the squashed tenure is final and cannot be
+/// reorged out from under a booted node. 6 is the standard Bitcoin finality depth.
+const MAINNET_MIN_BURN_CONFIRMATIONS: u64 = 6;
+
 /// Canonical Stacks and sortition MARF boundaries that must be squashed together.
 #[derive(Debug, Clone)]
 pub struct CanonicalSquashTargets {
@@ -34,11 +39,11 @@ pub struct CanonicalSquashTargets {
     pub stacks_tip: StacksBlockId,
     /// Consensus hash of the tenure-start tip.
     pub stacks_tip_consensus_hash: ConsensusHash,
-    /// Burn view consensus hash shared by the tenure-start and tenure-end headers.
+    /// Burn view of the tenure-start block - the sortition boundary.
     pub stacks_tip_burn_view_consensus_hash: ConsensusHash,
     /// Block hash of the tenure-start tip.
     pub stacks_tip_block_hash: BlockHeaderHash,
-    /// Bitcoin height of the squash boundary (the tenure tip's `burn_view`).
+    /// Bitcoin height of the squash boundary (the tenure-start block's `burn_view`).
     pub squash_bitcoin_height: u32,
     /// Sortition MARF height for `squash_bitcoin_height`.
     pub sortition_marf_height: u32,
@@ -48,64 +53,6 @@ pub struct CanonicalSquashTargets {
     pub sortition_boundary_tip: SortitionId,
     /// Sortition DB's first Bitcoin block height (used to derive MARF heights).
     pub first_bitcoin_height: u32,
-}
-
-fn find_tenure_start_ancestor_from_end(
-    chainstate: &StacksChainState,
-    tenure_ch: &ConsensusHash,
-    end_header: &StacksHeaderInfo,
-) -> Result<StacksHeaderInfo, String> {
-    if end_header.consensus_hash != *tenure_ch {
-        return Err(format!(
-            "Tenure CH mismatch: tenure-start sortition has CH {tenure_ch}, but \
-             tenure end header has CH {}.",
-            end_header.consensus_hash
-        ));
-    }
-
-    let mut cursor = end_header.clone();
-    for _ in 0..=end_header.stacks_block_height {
-        let cursor_id = cursor.index_block_hash();
-        let parent_id =
-            NakamotoChainState::get_nakamoto_parent_block_id(chainstate.db(), &cursor_id)
-                .map_err(|e| format!("Failed to load parent of Nakamoto block {cursor_id}: {e}"))?
-                .ok_or_else(|| {
-                    format!(
-                        "Nakamoto block {cursor_id} at height {} has no parent_block_id row",
-                        cursor.stacks_block_height
-                    )
-                })?;
-
-        let Some(parent_header) = NakamotoChainState::get_block_header(chainstate.db(), &parent_id)
-            .map_err(|e| format!("Failed to load parent header {parent_id}: {e}"))?
-        else {
-            return Err(format!(
-                "Nakamoto block {cursor_id} at height {} points to missing parent {parent_id}",
-                cursor.stacks_block_height
-            ));
-        };
-
-        if parent_header.consensus_hash != *tenure_ch {
-            return Ok(cursor);
-        }
-
-        if parent_header.stacks_block_height >= cursor.stacks_block_height {
-            return Err(format!(
-                "Nakamoto ancestry is not height-decreasing: parent {parent_id} height {} \
-                 is not below child {cursor_id} height {}",
-                parent_header.stacks_block_height, cursor.stacks_block_height
-            ));
-        }
-
-        cursor = parent_header;
-    }
-
-    Err(format!(
-        "Could not find tenure start ancestor for tenure {tenure_ch} before walking \
-         {} parent links from {}",
-        end_header.stacks_block_height,
-        end_header.index_block_hash()
-    ))
 }
 
 /// Build the error for a `--tenure-start-bitcoin-height` that did not start a
@@ -147,54 +94,6 @@ fn format_no_tenure_start_error(
         "Bitcoin height {start_height} did not start a Nakamoto tenure \
          (sortition=false).{nearby_str}"
     )
-}
-
-/// STRICT BOUNDARY PREDICATE: assert the tenure starting at `start_height` is
-/// exactly one burn block long.
-///
-/// The squashed boot path is simple iff sub-boundary MARF reads never fire. For
-/// the sortition MARF, that holds when the tenure being squashed is exactly one
-/// burn block long: in that case the next post-boundary block's
-/// `parent_sortition_id` lands AT the boundary, not below. The constraint is:
-/// the burn block immediately after `start_height` has its own sortition (i.e.
-/// starts a NEW tenure), so the current tenure does not extend forward via flash
-/// blocks.
-///
-/// The boundary is the first block in the tenure; intra-tenure descendants above
-/// it are dropped from the artifact and re-synced from peers on boot. Sortition
-/// remains anchored at the tenure's burn view, whose runtime canonical tip is the
-/// highest canonical block in the tenure.
-fn assert_single_burn_block_tenure(
-    sortition_db: &SortitionDB,
-    canonical_sortition_id: &SortitionId,
-    start_height: u64,
-) -> Result<(), String> {
-    let ic = sortition_db.index_handle_at_tip();
-    let next_height = start_height
-        .checked_add(1)
-        .ok_or_else(|| format!("Bitcoin height {start_height} + 1 overflows u64"))?;
-    let next_snapshot =
-        SortitionDB::get_ancestor_snapshot(&ic, next_height, canonical_sortition_id)
-            .map_err(|e| {
-                format!("Failed to get ancestor snapshot at Bitcoin height {next_height}: {e}")
-            })?
-            .ok_or_else(|| {
-                format!(
-                    "No canonical sortition at Bitcoin height {next_height}. The chain has \
-                     not yet progressed past `tenure_start_bitcoin_height`; pick a boundary \
-                     that is at least one burn block behind the canonical tip."
-                )
-            })?;
-    if !next_snapshot.sortition {
-        return Err(format!(
-            "Bitcoin height {start_height} starts a Nakamoto tenure that extends \
-             into burn block {next_height} via a flash block (sortition=false). \
-             Refusing to squash: the tenure must be exactly one burn block long. \
-             Bump --tenure-start-bitcoin-height to a tenure followed by its own \
-             sortition."
-        ));
-    }
-    Ok(())
 }
 
 /// Inputs to [`resolve_canonical_squash_targets`]: the source DB locations, the
@@ -286,79 +185,11 @@ fn resolve_tenure_start_snapshot(
     Ok(start_snapshot)
 }
 
-/// Find the highest known Nakamoto block header in the tenure starting at
-/// `start_height`, requiring its consensus hash to match the tenure-start
-/// sortition's.
-fn resolve_tenure_end_header(
-    chainstate: &StacksChainState,
-    sortition_db: &SortitionDB,
-    start_height: u64,
-    tenure_ch: &ConsensusHash,
-) -> Result<StacksHeaderInfo, String> {
-    let end_header = NakamotoChainState::find_highest_known_block_header_in_tenure_by_block_height(
-        chainstate,
-        sortition_db,
-        start_height,
-    )
-    .map_err(|e| format!("Failed to find tenure end at Bitcoin height {start_height}: {e}"))?
-    .ok_or_else(|| {
-        format!(
-            "No Nakamoto blocks found at Bitcoin height {start_height}. \
-             This may predate Nakamoto activation."
-        )
-    })?;
-
-    if end_header.consensus_hash != *tenure_ch {
-        return Err(format!(
-            "Tenure CH mismatch: tenure-start sortition has CH {tenure_ch}, but \
-             highest known block in tenure has CH {}. Likely a re-org between \
-             the start sortition and the block headers table.",
-            end_header.consensus_hash
-        ));
-    }
-    Ok(end_header)
-}
-
-/// Extract and validate the tenure's burn_view: both the tenure-start and
-/// tenure-end headers must carry a `burn_view`, and the two must agree.
-/// `stacks_height` is the (already u32-checked) tenure-start height, used only in
-/// error messages.
-fn resolve_tenure_burn_view(
-    start_header: &StacksHeaderInfo,
-    end_header: &StacksHeaderInfo,
-    stacks_height: u32,
-) -> Result<ConsensusHash, String> {
-    let stacks_tip = start_header.index_block_hash();
-    let end_stacks_tip = end_header.index_block_hash();
-    let header_burn_view = start_header.burn_view.clone().ok_or_else(|| {
-        format!(
-            "Nakamoto tenure start {stacks_tip} (height {stacks_height}) has no \
-             burn_view set. Squash requires a Nakamoto block header with a \
-             burn_view."
-        )
-    })?;
-    let end_header_burn_view = end_header.burn_view.clone().ok_or_else(|| {
-        format!(
-            "Nakamoto tenure end {end_stacks_tip} (height {}) has no \
-             burn_view set. Squash requires a Nakamoto block header with a \
-             burn_view.",
-            end_header.stacks_block_height
-        )
-    })?;
-    if end_header_burn_view != header_burn_view {
-        return Err(format!(
-            "Tenure burn_view mismatch: tenure start {stacks_tip} has \
-             burn_view {header_burn_view}, but tenure end {end_stacks_tip} \
-             has burn_view {end_header_burn_view}. Refusing to split the \
-             Stacks and sortition squash anchors across different burn views."
-        ));
-    }
-    Ok(header_burn_view)
-}
-
-/// Load the burn_view's sortition snapshot, confirm it sits on the canonical
-/// burn-chain fork, and resolve the squash Bitcoin height (bounded by both the
-/// tenure-start height and the sortition DB's first block height). Returns
+/// Load the tenure-start block's `burn_view` sortition snapshot, confirm it sits
+/// on the canonical burn-chain fork, and resolve the squash Bitcoin height. Under
+/// first-block anchoring the tenure-start block's `burn_view` IS the tenure-start
+/// sortition, so the resolved height must equal `tenure_start_bitcoin_height`; a
+/// mismatch means the anchor is not the tenure's first block. Returns
 /// `(burn_view_snapshot, squash_bitcoin_height)`.
 fn resolve_squash_burn_view_snapshot(
     ctx: &SortitionReadCtx,
@@ -407,10 +238,13 @@ fn resolve_squash_burn_view_snapshot(
             burn_view_snapshot.block_height
         )
     })?;
-    if squash_bitcoin_height < tenure_start_bitcoin_height {
+    if squash_bitcoin_height != tenure_start_bitcoin_height {
         return Err(format!(
-            "Tenure burn-view Bitcoin height {squash_bitcoin_height} is earlier than \
-             tenure-start Bitcoin height {tenure_start_bitcoin_height}. Refusing to squash."
+            "Tenure-start block's burn-view Bitcoin height {squash_bitcoin_height} does not \
+             equal the requested tenure-start Bitcoin height {tenure_start_bitcoin_height}. \
+             Under first-block anchoring the tenure-start block's burn_view is the tenure-start \
+             sortition, so these must match; a mismatch means the resolved anchor is not the \
+             tenure's first block. Refusing to squash."
         ));
     }
     if squash_bitcoin_height < first_bitcoin_height {
@@ -423,77 +257,47 @@ fn resolve_squash_burn_view_snapshot(
     Ok((burn_view_snapshot, squash_bitcoin_height))
 }
 
-/// Confirm the sortition boundary snapshot reconstructs the tenure-end canonical
-/// Stacks tip: the runtime tip's StacksBlockId, height, and burn_view must all
-/// match the tenure end / tenure burn_view. Catches a boundary that would leave
-/// the destination internally inconsistent.
-fn validate_runtime_tip_reconstruction(
+/// Resolve the tenure's FIRST Nakamoto block (the BlockFound block) canonically:
+/// walk the Stacks index from the canonical Stacks tip back to the tenure start for
+/// `tenure_ch`. For a tenure-extend, the later intra-tenure and extend blocks share
+/// `tenure_ch` but are not the tenure start, so they fall above the boundary and are
+/// re-synced from peers on boot.
+fn resolve_tenure_start_anchor(
+    chainstate: &StacksChainState,
     sortition_db: &SortitionDB,
-    burn_view_snapshot: &BlockSnapshot,
-    end_header: &StacksHeaderInfo,
-    header_burn_view: &ConsensusHash,
-) -> Result<(), String> {
-    let end_stacks_tip = end_header.index_block_hash();
-    let sortition_boundary_id = &burn_view_snapshot.sortition_id;
-
-    // The sortition boundary snapshot must resolve back to the tenure-end
-    // canonical Stacks tip, even though Clarity/Index are anchored at the
-    // tenure-start block.
-    let runtime_tip = SortitionDB::get_canonical_nakamoto_tip_hash_and_height_and_burn_view(
-        sortition_db.conn(),
-        burn_view_snapshot,
+    tenure_ch: &ConsensusHash,
+    start_height: u64,
+) -> Result<StacksHeaderInfo, String> {
+    let (canonical_ch, canonical_bhh) =
+        SortitionDB::get_canonical_stacks_chain_tip_hash(sortition_db.conn())
+            .map_err(|e| format!("Failed to read canonical Stacks chain tip: {e}"))?;
+    let canonical_stacks_tip = StacksBlockId::new(&canonical_ch, &canonical_bhh);
+    NakamotoChainState::get_nakamoto_tenure_start_block_header(
+        &mut chainstate.index_conn(),
+        &canonical_stacks_tip,
+        tenure_ch,
     )
-    .map_err(|e| {
-        format!(
-            "Failed to resolve runtime canonical Nakamoto tip from boundary \
-             snapshot {sortition_boundary_id}: {e}"
-        )
-    })?
+    .map_err(|e| format!("Failed to resolve tenure-start block for {tenure_ch}: {e}"))?
     .ok_or_else(|| {
         format!(
-            "Runtime canonical Nakamoto tip resolution returned None from \
-             boundary snapshot {sortition_boundary_id}"
+            "Tenure {tenure_ch} (Bitcoin height {start_height}) has no canonical Nakamoto \
+             tenure-start block. Either the elected tenure produced no canonical blocks, or \
+             this predates Nakamoto activation."
         )
-    })?;
-
-    let (runtime_ch, runtime_burn_view, runtime_bhh, runtime_height) = runtime_tip;
-    let runtime_block_id = StacksBlockId::new(&runtime_ch, &runtime_bhh);
-    if runtime_block_id != end_stacks_tip {
-        return Err(format!(
-            "Runtime canonical tip reconstruction mismatch: boundary snapshot \
-             {sortition_boundary_id} resolves to StacksBlockId {runtime_block_id} \
-             at height {runtime_height}, but the tenure end header is \
-             StacksBlockId {end_stacks_tip} at height {}. The squash boundary \
-             would leave the destination internally inconsistent.",
-            end_header.stacks_block_height
-        ));
-    }
-    if runtime_height != end_header.stacks_block_height {
-        return Err(format!(
-            "Runtime canonical tip height mismatch: boundary snapshot resolves \
-             to height {runtime_height} but tenure tip is at height \
-             {}",
-            end_header.stacks_block_height
-        ));
-    }
-    // The block id can match even when the burn-view mapping is corrupt.
-    if runtime_burn_view != *header_burn_view {
-        return Err(format!(
-            "Runtime canonical tip burn_view mismatch: boundary snapshot \
-             resolves to burn_view {runtime_burn_view} but the tenure \
-             burn_view is {header_burn_view}. The sortition DB's \
-             `stacks_chain_tips_by_burn_view` row for sortition \
-             {sortition_boundary_id} is internally inconsistent."
-        ));
-    }
-    Ok(())
+    })
 }
 
 /// Resolve the canonical Stacks and sortition boundaries to squash to from the
-/// tenure starting at `query.tenure_start_bitcoin_height`. Validates that the
-/// tenure is a single burn block long, that its burn view is canonical and
-/// consistent across the tenure-start and tenure-end headers, and that the
-/// boundary reconstructs the tenure-end runtime tip.
+/// tenure starting at `query.tenure_start_bitcoin_height`.
+///
+/// Clarity and Index anchor at the tenure's FIRST Nakamoto block (the BlockFound
+/// block). For a tenure-extend tenure (one spanning several burn blocks), the
+/// later intra-tenure blocks are dropped from the artifact and re-synced from
+/// peers on boot; the sortition boundary is the tenure-start sortition (the first
+/// block's `burn_view`).
+///
+/// Validates that the tenure exists and that the boundary burn_view is on the
+/// canonical burn fork.
 pub fn resolve_canonical_squash_targets(
     query: SquashTargetQuery,
 ) -> Result<CanonicalSquashTargets, String> {
@@ -508,26 +312,14 @@ pub fn resolve_canonical_squash_targets(
         ic: &ic,
         canonical_tip: &canonical_tip,
     };
-    let start_snapshot = resolve_tenure_start_snapshot(&ctx, start_height)?;
 
+    // Rule: a tenure must exist at the requested Bitcoin height.
+    let start_snapshot = resolve_tenure_start_snapshot(&ctx, start_height)?;
     let tenure_ch = start_snapshot.consensus_hash.clone();
 
-    // The squash boundary must be exactly one burn block long (see the predicate
-    // doc); otherwise the squashed boot path would need sub-boundary MARF reads.
-    assert_single_burn_block_tenure(&sortition_db, &canonical_tip.sortition_id, start_height)?;
-
-    let end_header =
-        resolve_tenure_end_header(&chainstate, &sortition_db, start_height, &tenure_ch)?;
-
-    let start_header = find_tenure_start_ancestor_from_end(&chainstate, &tenure_ch, &end_header)?;
-
-    if start_header.stacks_block_height > end_header.stacks_block_height {
-        return Err(format!(
-            "Tenure block ordering mismatch: tenure start height {} is greater \
-             than tenure end height {} at Bitcoin height {start_height}.",
-            start_header.stacks_block_height, end_header.stacks_block_height
-        ));
-    }
+    // Anchor at the tenure's FIRST Nakamoto block (the BlockFound block).
+    let start_header =
+        resolve_tenure_start_anchor(&chainstate, &sortition_db, &tenure_ch, start_height)?;
 
     let stacks_height: u32 = start_header.stacks_block_height.try_into().map_err(|_| {
         format!(
@@ -539,7 +331,13 @@ pub fn resolve_canonical_squash_targets(
     let stacks_tip_consensus_hash = start_header.consensus_hash.clone();
     let stacks_tip_block_hash = start_header.anchored_header.block_hash();
 
-    let header_burn_view = resolve_tenure_burn_view(&start_header, &end_header, stacks_height)?;
+    let header_burn_view = start_header.burn_view.clone().ok_or_else(|| {
+        format!(
+            "Nakamoto tenure start {stacks_tip} (height {stacks_height}) has no \
+             burn_view set. Squash requires a Nakamoto block header with a \
+             burn_view."
+        )
+    })?;
 
     let (burn_view_snapshot, squash_bitcoin_height) = resolve_squash_burn_view_snapshot(
         &ctx,
@@ -548,17 +346,25 @@ pub fn resolve_canonical_squash_targets(
         first_bitcoin_height,
     )?;
 
-    let sortition_marf_height = squash_bitcoin_height - first_bitcoin_height;
+    // Mainnet fork-safety: only squash finalized tenures. If the boundary burn
+    // block is too close to the canonical burn tip it could still be reorged,
+    // leaving a node booted from the snapshot stranded on a dead fork.
+    if query.mainnet {
+        let tip_height = canonical_tip.block_height;
+        let boundary = u64::from(squash_bitcoin_height);
+        if boundary + MAINNET_MIN_BURN_CONFIRMATIONS > tip_height {
+            return Err(format!(
+                "Refusing to squash: boundary Bitcoin height {boundary} is only {} burn block(s) \
+                 behind the canonical burn tip {tip_height}. Mainnet requires at least \
+                 {MAINNET_MIN_BURN_CONFIRMATIONS} for finality.",
+                tip_height.saturating_sub(boundary)
+            ));
+        }
+    }
 
+    let sortition_marf_height = squash_bitcoin_height - first_bitcoin_height;
     let sortition_canonical_tip = canonical_tip.sortition_id.clone();
     let sortition_boundary_tip = burn_view_snapshot.sortition_id.clone();
-
-    validate_runtime_tip_reconstruction(
-        &sortition_db,
-        &burn_view_snapshot,
-        &end_header,
-        &header_burn_view,
-    )?;
 
     Ok(CanonicalSquashTargets {
         stacks_height,
