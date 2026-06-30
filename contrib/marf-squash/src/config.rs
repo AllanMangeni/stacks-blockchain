@@ -22,20 +22,18 @@ use stacks_common::types::StacksEpochId;
 use stackslib::burnchains::PoxConstants;
 use stackslib::config::{Config, ConfigFile};
 
-/// On mainnet, Bitcoin height 943332 was a fast-block (no Stacks tenure
-/// started there), so the last tenure that belongs entirely to epoch 3.3
-/// is at height 943331. This is the minimum acceptable value for
-/// squash on mainnet.
-const MAINNET_MIN_TENURE_HEIGHT: u64 = 943_331;
+/// Mainnet minimum: the first tenure of epoch 3.4. 3.4 activated at Bitcoin height
+/// 943333, but that block had no sortition, so the first 3.4 tenure is 943334.
+const MAINNET_MIN_TENURE_HEIGHT: u64 = 943_334;
 
-/// Enforce that `bitcoin_height` is at least the last tenure of epoch 3.3.
+/// Enforce that `bitcoin_height` selects a tenure in epoch 3.4 or later.
 ///
-/// A squashed snapshot is only usable from epoch 3.4 onwards, so the
-/// selected tenure must be the last tenure of epoch 3.3 or later.
+/// A squashed snapshot is only usable from epoch 3.4 onwards, and the squash anchors
+/// at the selected tenure's first Nakamoto block, so that block must already be in
+/// epoch 3.4.
 ///
-/// * Mainnet: the minimum is [`MAINNET_MIN_TENURE_HEIGHT`]
-/// * non-mainnet: the minimum is `epoch_3.4_start_height - 1`, derived
-///   from the node config TOML.
+/// * Mainnet: [`MAINNET_MIN_TENURE_HEIGHT`].
+/// * non-mainnet: epoch 3.4's `start_height`, from the node config TOML.
 pub fn enforce_minimum_tenure_height(
     bitcoin_height: u32,
     mainnet: bool,
@@ -69,16 +67,24 @@ pub fn enforce_minimum_tenure_height(
             );
             std::process::exit(1);
         });
-        epoch_34.start_height - 1
+        if epoch_34.start_height == 0 {
+            eprintln!(
+                "Error: config '{}' defines epoch 3.4 starting at height 0; \
+                 a real network activates 3.4 well after genesis.",
+                config_path.display()
+            );
+            std::process::exit(1);
+        }
+        epoch_34.start_height
     };
 
     if bitcoin_height < min {
         eprintln!(
             "Error: --tenure-start-bitcoin-height {bitcoin_height} is below the minimum \
              acceptable height {min}.\n\
-             A squashed snapshot can only be used from epoch 3.4 onwards. The tenure at \
-             height {min} is the last tenure of epoch 3.3; its blocks are the last ones \
-             included before epoch 3.4 activates."
+             A squashed snapshot can only be used from epoch 3.4 onwards, and the squash \
+             anchors at the tenure's first Nakamoto block, so the tenure must start at or \
+             after the first tenure of epoch 3.4 (height {min})."
         );
         std::process::exit(1);
     }
