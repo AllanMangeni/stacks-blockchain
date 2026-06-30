@@ -17,7 +17,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -142,19 +142,7 @@ fn hash_one_aggregate_entry(
     }
     hasher.update(metadata.len().to_le_bytes());
 
-    let mut file =
-        fs::File::open(&file_path).map_err(|e| format!("open {}: {e}", file_path.display()))?;
-    let mut buf = [0u8; 65536];
-    loop {
-        let n = file
-            .read(&mut buf)
-            .map_err(|e| format!("read {}: {e}", file_path.display()))?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(())
+    hash_file_into(hasher, &file_path)
 }
 
 /// Recursively collect regular files, rejecting symlinks and non-regular
@@ -204,19 +192,35 @@ pub fn collect_files_recursive(
     Ok(())
 }
 
-/// Compute the SHA-256 hex digest of a file using streaming reads.
+/// Stream `path`'s contents into `hasher`. Shared by [`sha256_file`] and
+/// [`hash_one_aggregate_entry`].
+fn hash_file_into(hasher: &mut Sha256, path: &Path) -> Result<(), String> {
+    let file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mut reader = BufReader::with_capacity(65536, file);
+    std::io::copy(&mut reader, hasher).map_err(|e| format!("read {}: {e}", path.display()))?;
+    Ok(())
+}
+
+/// Compute the SHA-256 hex digest of a file.
 pub fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
     let mut hasher = Sha256::new();
-    let mut buf = [0u8; 65536];
-    loop {
-        let n = file
-            .read(&mut buf)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
+    hash_file_into(&mut hasher, path)?;
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sha256_file;
+
+    /// Known-answer vector: SHA-256("abc"). Guards the streaming-hash refactor.
+    #[test]
+    fn sha256_file_matches_known_vector() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f");
+        std::fs::write(&path, b"abc").unwrap();
+        assert_eq!(
+            sha256_file(&path).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }
