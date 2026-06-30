@@ -76,22 +76,20 @@ pub fn read_db_config(index_db_path: &Path) -> DbConfig {
 pub fn derive_expected_epoch2_block_rel_paths(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<String>, String> {
+    // Skip the genesis boot block: it has no on-disk epoch-2.x block file.
     let mut stmt = conn
-        .prepare("SELECT index_block_hash, block_height FROM block_headers ORDER BY block_height")
+        .prepare(
+            "SELECT index_block_hash FROM block_headers WHERE block_height > 0 \
+             ORDER BY block_height",
+        )
         .map_err(|e| format!("prepare block_headers query: {e}"))?;
     let rows = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, StacksBlockId>(0)?, row.get::<_, u64>(1)?))
-        })
+        .query_map([], |row| row.get::<_, StacksBlockId>(0))
         .map_err(|e| format!("query block_headers: {e}"))?;
 
     let mut rel_paths = Vec::new();
     for row in rows {
-        let (index_block_hash, block_height) =
-            row.map_err(|e| format!("read block_headers row: {e}"))?;
-        if block_height == 0 {
-            continue;
-        }
+        let index_block_hash = row.map_err(|e| format!("read block_headers row: {e}"))?;
         rel_paths.push(epoch2_block_rel_path(&index_block_hash));
     }
 
