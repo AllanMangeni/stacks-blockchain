@@ -2939,10 +2939,10 @@ const ALLOWANCE_WITH_ALL: SpecialAPI = SpecialAPI {
     output_type: "Allowance",
     signature: "(with-all-assets-unsafe)",
     description: "Grants unrestricted access to all assets of the contract to
-the enclosing `as-contract?` expression. `with-stacking` is not allowed outside
-of `as-contract?` contexts. Note that this is not allowed in `restrict-assets?`
-and will trigger an analysis error, since usage there does not make sense (i.e.
-just remove the `restrict-assets?` instead).
+the enclosing `as-contract?` expression. `with-all-assets-unsafe` is not
+allowed outside of `as-contract?` contexts. Note that this is not allowed in
+`restrict-assets?` and will trigger an analysis error, since usage there does
+not make sense (i.e. just remove the `restrict-assets?` instead).
 **_⚠️ Security Warning: This should be used with extreme caution, as it
 effectively disables all asset protection for the contract. ⚠️_** This
 dangerous allowance should only be used when the code executing within the
