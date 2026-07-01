@@ -58,7 +58,7 @@ jobs:
         uses: ./.github/actions/cache/cargo
 
       # Check cache for nextest archive
-      - name: Check Test Archive Cache
+      - name: Check Nextest Archive Cache
         id: nextest-archive
         uses: ./.github/actions/cache/nextest-archive
         with:
