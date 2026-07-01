@@ -80,7 +80,10 @@ jobs:
     name: Check Tests
     needs:
       - integration-tests
-    if: always() && !cancelled()
+    if: |
+      always() && 
+      !cancelled() &&
+      github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     steps:
       # Checkout the code

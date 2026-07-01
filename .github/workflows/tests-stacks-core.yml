@@ -142,7 +142,10 @@ jobs:
       - open-api-validation
       - node-config-docsgen
       - core-contracts-clarinet-test
-    if: always() && !cancelled()
+    if: |
+      always() && 
+      !cancelled() &&
+      github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     steps:
       # Checkout the code

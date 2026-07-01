@@ -317,7 +317,8 @@ jobs:
   ############################################################################
   create-slow-failed-tests-summary:
     if: >-
-      always()
+      always() &&
+      github.event_name != 'merge_group'
     name: "Create: Slow & Failed Tests Report"
     runs-on: *shared_config
     needs:
@@ -471,7 +472,8 @@ jobs:
   create-code-coverage-report:
     if: >-
       always() &&
-      github.event.repository.visibility == 'public'
+      github.event.repository.visibility == 'public' &&
+      github.event_name != 'merge_group'
     name: "Create: Code Coverage Report"
     runs-on: *shared_config
     needs:
