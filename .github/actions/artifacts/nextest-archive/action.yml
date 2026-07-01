@@ -1,60 +1,32 @@
-name: Nextest Archive Cache
+name: Nextest Archive Artifact
 description: |
-    Nextest binary archive cache management.
+    Nextest binary archive artifact management.
 
 inputs:
   action:
-    description: "Type of operation (check,restore,create)"
-    required: false
-    default: "check"
-  archive-file:
-    description: "The test archive file"
+    description: "Type of operation (restore,create)"
     required: true
-  codecov-binary-path:
-    description: "Code coverage binary path"
-    required: false
-    default: "./target/debug/"
+  archive-file:
+    description: "The nextest archive file"
+    required: true
+  debug-binary-path:
+    description: "Debug binary path"
+    required: true
 
-outputs:
-  cache-hit:
-    description: "Cache Hit"
-    value: ${{ steps.check_cache.outputs.cache-hit }}
-  cache-key:
-    description: "Cache Key"
-    value: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}
+# Set default env vars
+env:
+  RUSTFLAGS: "-C instrument-coverage -A warnings"
+  LLVM_PROFILE_FILE: "stacks-core-%p-%m.profraw"
 
 runs:
   using: "composite"
   steps:
-    # Generate cache keys
-    - name: Generate Cache Keys
-      id: generate-keys
-      uses: ./.github/actions/cache/generate-keys
-  
-    # Check if cache data exists
-    - name: Check Cache
-      if: |
-        inputs.action == 'check'
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      id: check_cache
-      with:
-        lookup-only: true
-        path: |
-          ${{ inputs.archive-file }}
-          ${{ inputs.codecov-binary-path }}
-        key: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}
-
-    # Restore cache data
-    - name: Restore Cache
+    - name: Restore Nextest Archive Artifact
       if: |
         inputs.action == 'restore'
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # 8.0.1
       with:
-        path: |
-          ${{ inputs.archive-file }}
-          ${{ inputs.codecov-binary-path }}
-        key: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}
-        fail-on-cache-miss: true
+        name: "nextest-archive"
 
     # Checkout the code
     - name: Checkout the latest code
@@ -118,14 +90,17 @@ runs:
           --features monitoring_prom \
           --archive-file "$ARCHIVE_FILE"
 
-    # Save cache data
-    # Includes contents of ./target/debug because they're needed for both unit tests and code coverage
-    - name: Save Cache
+    - name: Create Nextest Archive Artifact
       if: |
-        inputs.action == 'create'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        inputs.action == 'upload'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
       with:
+        name: "nextest-archive"
+        # Includes contents of debug-binary-path because they're needed for both unit tests and code coverage
         path: |
           ${{ inputs.archive-file }}
-          ${{ inputs.codecov-binary-path }}
-        key: ${{ steps.generate-keys.outputs.nextest-archive-cache-key }}
+          ${{ inputs.debug-binary-path }}
+        if-no-files-found: error
+        retention-days: 1
+        compression-level: 9 # 0 (none) - 9 (most)
+        overwrite: true  

@@ -18,9 +18,6 @@ outputs:
   cargo-cache-key:
     description: "Cargo Cache Key"
     value: ${{ steps.generate-cargo-cache-key.outputs.cache-key }}
-  nextest-archive-cache-key:
-    description: "Nextest Archive Cache Key"
-    value: ${{ steps.generate-nextest-archive-cache-key.outputs.cache-key }}
 
 runs:
   using: "composite"
@@ -39,9 +36,3 @@ runs:
       shell: bash
       run: |
         echo "cache-key=cargo-crates--${{ runner.os }}" >> "$GITHUB_OUTPUT"
-        
-    - name: Generate Nextest Archive Cache key
-      id: generate-nextest-archive-cache-key
-      shell: bash
-      run: |
-        echo "cache-key=nextest-archive--${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"

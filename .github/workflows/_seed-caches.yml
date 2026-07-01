@@ -29,86 +29,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Check which caches already exist before creating them
-  check-caches:
-    name: Check Existing Caches
+  ############################################################################
+  ### Setup Reusable Caches for Tests
+  ############################################################################
+  setup-test-caches:
+    name: "Setup: Test Caches"
     # Only execute if running in our core repo, the CRON will run against `master` which is intended
     if: |
       github.repository == 'stacks-network/stacks-core'
-    runs-on: ubuntu-latest
-    outputs:
-      bitcoin-cache-hit: ${{ steps.bitcoin.outputs.cache-hit }}
-      cargo-cache-hit: ${{ steps.cargo.outputs.cache-hit }}
-    steps:
-      # Checkout the code
-      #   - only .github is required for checking caches
-      - name: Checkout the latest code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          sparse-checkout: |
-            .github
-    
-      # Check cache for bitcoin binary
-      - name: Check Bitcoin Cache
-        id: bitcoin
-        uses: ./.github/actions/cache/bitcoin
-
-      # Check cache for cargo binaries
-      - name: Check Cargo Cache
-        id: cargo
-        uses: ./.github/actions/cache/cargo
-
-      # Output a job summary of cache status
-      - name: Output GitHub Job Summary
-        shell: bash
-        run: |
-          echo "## Cache Status" >> $GITHUB_STEP_SUMMARY
-          echo "| Cache | Cache Key | Exists? |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Bitcoin | ${{ steps.bitcoin.outputs.cache-key }} | ${{ steps.bitcoin.outputs.cache-hit == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Cargo | ${{ steps.cargo.outputs.cache-key }} | ${{ steps.cargo.outputs.cache-hit == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-
-  # Cache the bitcoin binary (if it doesn't exist)
-  cache-bitcoin-binary:
-    name: Build & Cache Bitcoin Binary
-    needs:
-      - check-caches
-    runs-on: ubuntu-latest
-    if: needs.check-caches.outputs.bitcoin-cache-hit != 'true'
-    steps:
-      # Checkout the code
-      #   - only .github is required for checking caches
-      - name: Checkout the latest code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          sparse-checkout: |
-            .github
-
-      - name: Create Bitcoin Cache
-        uses: ./.github/actions/cache/bitcoin
-        with:
-          action: create
-
-  # Cache the cargo crates (if they don't exist)
-  cache-cargo:
-    name: Build & Cache Cargo Crates
-    needs:
-      - check-caches
-    runs-on: ubuntu-latest
-    if: needs.check-caches.outputs.cargo-cache-hit != 'true'
-    steps:
-      # Checkout the code
-      #   - only .github is required for checking caches
-      - name: Checkout the latest code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          sparse-checkout: |
-            .github
-
-      - name: Create Cargo Cache
-        uses: ./.github/actions/cache/cargo
-        with:
-          action: create
+    uses: ./.github/workflows/setup-test-caches.yml

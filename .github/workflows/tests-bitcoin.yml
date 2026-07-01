@@ -8,7 +8,9 @@ on:
       archive-file:
         description: "The test archive file"
         required: true
-        type: string
+      debug-binary-path:
+        description: "Debug binary path"
+        required: true
 
 # Set default permissions
 permissions:
@@ -25,7 +27,6 @@ env:
   TEST_TAG_CI_SKIP: ci_skip
   # Configure batch size and archive file for bitcoin_tests.sh invocation
   BATCH_SIZE: 2
-  NEXTEST_ARCHIVE: ${{ inputs.archive-file }}
 
 # Configure concurrency
 concurrency:
@@ -54,12 +55,13 @@ jobs:
         with:
           tools: nextest
           
-      # Restore nextest test archive cache data
-      - name: Restore Nextest Archive Cache
-        uses: ./.github/actions/cache/nextest-archive
+      # Restore Nextest archive artifact
+      - name: Restore Nextest Archive Artifact
+        uses: ./.github/actions/artifacts/nextest-archive
         with:
           action: restore
           archive-file: ${{ inputs.archive-file }}
+          debug-binary-path: ${{ inputs.debug-binary-path }}
 
       # Generate the bitcoin test matrices json used for running tests
       - name: Generate Test Matrices
@@ -94,8 +96,9 @@ jobs:
         uses: ./.github/actions/run-tests
         with:
           test-names: ${{ matrix.batch.csv }}
-          codecov-test-name: batched-integration-tests-${{ matrix.batch.index }}
           archive-file: ${{ inputs.archive-file }}
+          debug-binary-path: ${{ inputs.debug-binary-path }}
+          codecov-test-name: batched-integration-tests-${{ matrix.batch.index }}
 
   # Check that all jobs in this workflow have succeeded.
   check-tests:

@@ -100,7 +100,7 @@ runs:
       env:
         RUSTFLAGS: "-C instrument-coverage -C linker=clang -C link-arg=-fuse-ld=mold -A warnings"
         CARGO_INCREMENTAL: 0
-      # This command should be kept in sync with the same command in cache/nextest-archive action
+      # This command should be kept in sync with the same command in artifacts/nextest-archive action
       run: |
         cargo nextest archive \
           --workspace \

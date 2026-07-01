@@ -34,6 +34,7 @@ concurrency:
 # Env vars
 env:
   TEST_ARCHIVE_FILE: "~/test_archive.tar.zst"
+  DEBUG_BINARY_PATH: "./target/debug/"
 
 jobs:
   ############################################################################
@@ -48,6 +49,7 @@ jobs:
     runs-on: &shared_config ubuntu-latest
     outputs:
       test-archive-file: ${{ steps.set-env.outputs.test_archive_file }}
+      debug-binary-path: ${{ steps.set-env.outputs.debug_binary_path }}
       job-should-run: ${{ steps.set-env.outputs.job_should_run }}
     steps:
       - name: Export Env Variables
@@ -58,6 +60,8 @@ jobs:
           ARCHIVE_FILE="${INPUT_FILE/#\~/$HOME}"
         
           echo "test_archive_file=$ARCHIVE_FILE" >> $GITHUB_OUTPUT
+          
+          echo "debug_binary_path=${{ env.DEBUG_BINARY_PATH }}" >> $GITHUB_OUTPUT
           
           # Check that evaluates if various jobs should run. Generally we care if it's a workflow dispatch, PR, or merge group.
           echo "job_should_run=${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group' }}" >> $GITHUB_OUTPUT
@@ -201,8 +205,24 @@ jobs:
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/setup-test-caches.yml
+      
+  ############################################################################
+  ### Setup Nextest Archive Artifact for Tests
+  ############################################################################
+  setup-nextest-archive:
+    name: "Setup: Nextest Archive Artifact"
+    needs:
+      - check-changelog
+      - check-rustfmt
+      - setup-env
+      - setup-test-caches
+    if: >-
+      needs.setup-env.outputs.job-should-run == 'true'
+    uses: ./.github/actions/artifacts/nextest-archive
     with:
+      action: create
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
+      debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
 
   ############################################################################
   ### Run Stacks Core Tests
@@ -213,12 +233,14 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
+      - setup-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/tests-stacks-core.yml
     with:
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
+      debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
 
   ############################################################################
   ### Run Bitcoin Tests
@@ -229,12 +251,14 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
+      - setup-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/tests-bitcoin.yml
     with:
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
+      debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
 
   ############################################################################
   ### Run Bitcoin RPC Tests
@@ -245,12 +269,14 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
+      - setup-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/tests-bitcoin-rpc.yml
     with:
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
+      debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
 
   ############################################################################
   ### Run P2P Tests
@@ -261,12 +287,14 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
+      - setup-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/tests-p2p.yml
     with:
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
+      debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
       
   ############################################################################
   ### Run Epoch Tests (Release Only)
@@ -278,12 +306,14 @@ jobs:
       - check-rustfmt
       - check-release
       - setup-test-caches
+      - setup-nextest-archive
       - setup-env
     if: >-
       needs.check-release.outputs.is_release == 'true'
     uses: ./.github/workflows/tests-epoch.yml
     with:
       archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
+      debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
 
   ############################################################################
   ### Create Release

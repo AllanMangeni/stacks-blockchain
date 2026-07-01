@@ -8,7 +8,9 @@ on:
       archive-file:
         description: "The test archive file"
         required: true
-        type: string
+      debug-binary-path:
+        description: "Debug binary path"
+        required: true
 
 # Set default permissions
 permissions:
@@ -90,7 +92,7 @@ jobs:
         with:
           action: restore
      
-      # Symlink bitoind to $PATH
+      # Symlink bitcoind to $PATH
       - name: Link Bitcoin Binary
         shell: bash
         run: |
@@ -102,13 +104,13 @@ jobs:
         run: |
           sudo prlimit --nofile=4096:4096
         
-      # Restore nextest test archive cache data
-      - name: Restore Nextest Archive Cache
-        id: restore_test_cache
-        uses: ./.github/actions/cache/nextest-archive
+      # Restore Nextest archive artifact
+      - name: Restore Nextest Archive Artifact
+        uses: ./.github/actions/artifacts/nextest-archive
         with:
           action: restore
           archive-file: ${{ inputs.archive-file }}
+          debug-binary-path: ${{ inputs.debug-binary-path }}
 
       # Pull bitcoin docker image
       - name: Pull bitcoind image (${{ matrix.bitcoin_version }})

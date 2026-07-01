@@ -2,22 +2,13 @@
 
 name: "Setup: Test Caches"
 
-on:
-  workflow_call:
-    inputs:
-      archive-file:
-        description: "The test archive file"
-        required: true
-        type: string
-
 # Set default permissions
 permissions:
   contents: read
 
 # Set default env vars
-#   - transferred to composite action steps
 env:
-  RUSTFLAGS: "-Cinstrument-coverage -Awarnings"
+  RUSTFLAGS: "-C instrument-coverage -A warnings"
   LLVM_PROFILE_FILE: "stacks-core-%p-%m.profraw"
 
 # Configure concurrency
@@ -36,7 +27,6 @@ jobs:
     outputs:
       bitcoin-cache-hit: ${{ steps.bitcoin.outputs.cache-hit }}
       cargo-cache-hit: ${{ steps.cargo.outputs.cache-hit }}
-      nextest-archive-cache-hit: ${{ steps.nextest-archive.outputs.cache-hit }}
     steps:
       # Checkout the code
       #   - only .github is required for checking caches
@@ -57,13 +47,6 @@ jobs:
         id: cargo
         uses: ./.github/actions/cache/cargo
 
-      # Check cache for nextest archive
-      - name: Check Nextest Archive Cache
-        id: nextest-archive
-        uses: ./.github/actions/cache/nextest-archive
-        with:
-          archive-file: ${{ inputs.archive-file }}
-
       # Output a job summary of cache status
       - name: Output GitHub Job Summary
         shell: bash
@@ -73,7 +56,6 @@ jobs:
           echo "|-------|--------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Bitcoin | ${{ steps.bitcoin.outputs.cache-key }} | ${{ steps.bitcoin.outputs.cache-hit == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Cargo | ${{ steps.cargo.outputs.cache-key }} | ${{ steps.cargo.outputs.cache-hit == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Nextest Archive | ${{ steps.nextest-archive.outputs.cache-key }} | ${{ steps.nextest-archive.outputs.cache-hit == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
 
   # Cache the bitcoin binary (if it doesn't exist)
   cache-bitcoin-binary:
@@ -122,29 +104,3 @@ jobs:
         uses: ./.github/actions/cache/cargo
         with:
           action: create
-
-  # Cache the nextest archive (if it doesn't exist)
-  cache-nextest-archive:
-    name: Build & Cache Nextest Archive
-    needs:
-      - check-caches
-      - cache-cargo # this has to finish first or we build cargo twice in parallel
-    runs-on: ubuntu-latest
-    if: |
-      !cancelled() && 
-      needs.check-caches.outputs.nextest-archive-cache-hit != 'true'
-    steps:
-      # Checkout the code
-      #   - only .github is required for checking caches
-      - name: Checkout the latest code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          sparse-checkout: |
-            .github
-
-      - name: Create Nextest Archive Cache
-        uses: ./.github/actions/cache/nextest-archive
-        with:
-          action: create
-          archive-file: ${{ inputs.archive-file }}
