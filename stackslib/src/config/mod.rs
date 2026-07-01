@@ -5219,7 +5219,7 @@ mod tests {
 
         // This closure adds an empty section of the given name. This should not
         // change anything, because it should use the same default values, with
-        // the exception of the document difference for the [miner] section.
+        // the exception of the documented difference for the [miner] section.
         let assert_empty_section_makes_no_difference = |section: &str| {
             let modified_toml = format!(
                 r#"{base_toml}
