@@ -19,7 +19,7 @@ outputs:
     description: "Cargo Cache Key"
     value: ${{ steps.generate-cargo-cache-key.outputs.cache-key }}
   nextest-archive-cache-key:
-    description: "Nextext Archive Cache Key"
+    description: "Nextest Archive Cache Key"
     value: ${{ steps.generate-nextest-archive-cache-key.outputs.cache-key }}
 
 runs:
