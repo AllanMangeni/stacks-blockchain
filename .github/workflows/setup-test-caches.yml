@@ -36,7 +36,7 @@ jobs:
     outputs:
       bitcoin-cache-hit: ${{ steps.bitcoin.outputs.cache-hit }}
       cargo-cache-hit: ${{ steps.cargo.outputs.cache-hit }}
-      nextest-archive-cache-hit: ${{ steps.test-archive.outputs.cache-hit }}
+      nextest-archive-cache-hit: ${{ steps.nextest-archive.outputs.cache-hit }}
     steps:
       # Checkout the code
       #   - only .github is required for checking caches
@@ -124,7 +124,7 @@ jobs:
           action: create
 
   # Cache the nextest archive (if it doesn't exist)
-  cache-test-archive-and-cargo:
+  cache-nextest-archive:
     name: Build & Cache Nextest Archive
     needs:
       - check-caches
