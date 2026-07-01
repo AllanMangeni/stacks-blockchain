@@ -194,10 +194,10 @@ jobs:
     uses: ./.github/workflows/check-constants.yml
 
   ############################################################################
-  ### Setup Reusable Caches for Tests
+  ### Check Reusable Test Caches
   ############################################################################
   setup-test-caches:
-    name: "Setup: Test Caches"
+    name: "Check: Test Caches"
     needs:
       - check-changelog
       - check-rustfmt
@@ -205,6 +205,8 @@ jobs:
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/setup-test-caches.yml
+    with:
+      create-if-missing: false # The workflow will fail if they are missing, with instructions on how to seed them
       
   ############################################################################
   ### Create Nextest Archive Artifact for Tests

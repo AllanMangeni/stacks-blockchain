@@ -30,11 +30,13 @@ concurrency:
 
 jobs:
   ############################################################################
-  ### Setup Reusable Caches for Tests
+  ### Create Reusable Caches for Tests
   ############################################################################
   setup-test-caches:
-    name: "Setup: Test Caches"
+    name: "Create: Test Caches"
     # Only execute if running in our core repo, the CRON will run against `master` which is intended
     if: |
       github.repository == 'stacks-network/stacks-core'
     uses: ./.github/workflows/setup-test-caches.yml
+    with:
+      create-if-missing: true

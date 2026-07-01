@@ -4,6 +4,11 @@ name: "Setup: Test Caches"
 
 on:
   workflow_call:
+    inputs:
+      create-if-missing:
+        description: "Whether to create and upload caches if they are missing"
+        required: true
+        type: boolean
 
 # Set default permissions
 permissions:
@@ -50,17 +55,36 @@ jobs:
         id: cargo
         uses: ./.github/actions/cache/cargo
 
-      # Output a job summary of cache status
+      # Output a job summary of cache status and crash the CI run if a cache is missing and won't be created
       - name: Output GitHub Job Summary
         shell: bash
+        env:
+          CREATE_IF_MISSING: ${{ inputs.create-if-missing }}
+          BITCOIN_KEY: ${{ steps.bitcoin.outputs.cache-key }}
+          BITCOIN_HIT: ${{ steps.bitcoin.outputs.cache-hit }}
+          CARGO_KEY: ${{ steps.cargo.outputs.cache-key }}
+          CARGO_HIT: ${{ steps.cargo.outputs.cache-hit }}
         run: |
+          BITCOIN_EMOJI="❌"
+          [ "$BITCOIN_HIT" = "true" ] && BITCOIN_EMOJI="✅"
+          CARGO_EMOJI="❌"
+          [ "$CARGO_HIT" = "true" ] && CARGO_EMOJI="✅"
+
           echo "## Cache Status" >> $GITHUB_STEP_SUMMARY
           echo "| Cache | Cache Key | Exists? |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Bitcoin | ${{ steps.bitcoin.outputs.cache-key }} | ${{ steps.bitcoin.outputs.cache-hit == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Cargo | ${{ steps.cargo.outputs.cache-key }} | ${{ steps.cargo.outputs.cache-hit == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bitcoin | $BITCOIN_KEY | $BITCOIN_EMOJI |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cargo | $CARGO_KEY | $CARGO_EMOJI |" >> $GITHUB_STEP_SUMMARY
 
-  # Cache the bitcoin binary (if it doesn't exist)
+          # Fail the build gracefully if create-if-missing is false and a cache is missing
+          if [ "$CREATE_IF_MISSING" = "false" ]; then
+            if [ "$BITCOIN_HIT" != "true" ] || [ "$CARGO_HIT" != "true" ]; then
+              echo "::error title=Required Cache Missing::A required cache (Bitcoin or Cargo) was not found. This should be rare. Re-run this action AFTER seeding the caches from master: https://github.com/stacks-network/stacks-core/actions/workflows/_seed-caches.yml"
+              exit 1
+            fi
+          fi
+
+  # Cache the bitcoin binary (if it doesn't exist and if we should create it)
   cache-bitcoin-binary:
     name: Build & Cache Bitcoin Binary
     needs:
@@ -68,7 +92,8 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       !cancelled() && 
-      needs.check-caches.outputs.bitcoin-cache-hit != 'true'
+      needs.check-caches.outputs.bitcoin-cache-hit != 'true' &&
+      inputs.create-if-missing == 'true'
     steps:
       # Checkout the code
       #   - only .github is required for checking caches
@@ -84,7 +109,7 @@ jobs:
         with:
           action: create
 
-  # Cache the cargo crates (if they don't exist)
+  # Cache the cargo crates (if they doesn't exist and if we should create them)
   cache-cargo:
     name: Build & Cache Cargo Crates
     needs:
@@ -92,7 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       !cancelled() && 
-      needs.check-caches.outputs.cargo-cache-hit != 'true'
+      needs.check-caches.outputs.cargo-cache-hit != 'true' &&
+      inputs.create-if-missing == 'true'
     steps:
       # Checkout the code
       #   - only .github is required for checking caches
