@@ -207,10 +207,10 @@ jobs:
     uses: ./.github/workflows/setup-test-caches.yml
       
   ############################################################################
-  ### Setup Nextest Archive Artifact for Tests
+  ### Create Nextest Archive Artifact for Tests
   ############################################################################
-  setup-nextest-archive:
-    name: "Setup: Nextest Archive Artifact"
+  create-nextest-archive:
+    name: "Create: Nextest Archive Artifact"
     runs-on: *shared_config
     needs:
       - check-changelog
@@ -246,7 +246,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
-      - setup-nextest-archive
+      - create-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
@@ -264,7 +264,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
-      - setup-nextest-archive
+      - create-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
@@ -282,7 +282,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
-      - setup-nextest-archive
+      - create-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
@@ -300,7 +300,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-test-caches
-      - setup-nextest-archive
+      - create-nextest-archive
       - setup-env
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
@@ -319,7 +319,7 @@ jobs:
       - check-rustfmt
       - check-release
       - setup-test-caches
-      - setup-nextest-archive
+      - create-nextest-archive
       - setup-env
     if: >-
       needs.check-release.outputs.is_release == 'true'
