@@ -32,10 +32,9 @@ jobs:
   # Check which caches already exist before creating them
   check-caches:
     name: Check Existing Caches
-    # Only execute if running in our core repo and on the `develop` branch
+    # Only execute if running in our core repo, the CRON will run against `master` which is intended
     if: |
-      github.repository == 'stacks-network/stacks-core' &&
-      github.ref == 'refs/heads/develop'
+      github.repository == 'stacks-network/stacks-core'
     runs-on: ubuntu-latest
     outputs:
       bitcoin-cache-hit: ${{ steps.bitcoin.outputs.cache-hit }}
