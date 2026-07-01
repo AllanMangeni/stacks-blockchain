@@ -218,11 +218,14 @@ jobs:
       - setup-test-caches
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
-    uses: ./.github/actions/artifacts/nextest-archive
-    with:
-      action: create
-      archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
-      debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
+    steps:
+      # Create Nextest archive artifact
+    - name: Create Nextest Archive Artifact
+      uses: ./.github/actions/artifacts/nextest-archive
+      with:
+        action: create
+        archive-file: ${{ inputs.archive-file }}
+        debug-binary-path: ${{ inputs.debug-binary-path }}
 
   ############################################################################
   ### Run Stacks Core Tests
