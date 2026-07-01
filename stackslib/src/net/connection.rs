@@ -622,6 +622,14 @@ impl std::default::Default for ConnectionOptions {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+impl ConnectionOptions {
+    pub fn with_private_neighbors(mut self) -> Self {
+        self.private_neighbors = true;
+        self
+    }
+}
+
 #[derive(Debug)]
 pub struct NetworkConnection<P: ProtocolFamily> {
     pub options: ConnectionOptions,
