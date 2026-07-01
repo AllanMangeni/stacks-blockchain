@@ -103,12 +103,14 @@ runs:
         path: |
           ${{ inputs.archive-file }}
           ${{ inputs.debug-binary-path }}
+          !${{ inputs.debug-binary-path }}/examples/**
           !${{ inputs.debug-binary-path }}/incremental/**
           !${{ inputs.debug-binary-path }}/.fingerprint/**
           !${{ inputs.debug-binary-path }}/build/**
           !${{ inputs.debug-binary-path }}/deps/**/*.d
           !${{ inputs.debug-binary-path }}/deps/**/*.rlib
           !${{ inputs.debug-binary-path }}/deps/**/*.rmeta
+          !${{ inputs.debug-binary-path }}/deps/**/*.so
         if-no-files-found: error
         retention-days: 1
         compression-level: 9 # 0 (none) - 9 (most)
