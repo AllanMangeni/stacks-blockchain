@@ -6,12 +6,15 @@ inputs:
   action:
     description: "Type of operation (restore,create)"
     required: true
+    type: string
   archive-file:
     description: "The nextest archive file"
     required: true
+    type: string
   debug-binary-path:
     description: "Debug binary path"
     required: true
+    type: string
 
 # Set default env vars
 env:
