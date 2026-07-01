@@ -55,7 +55,7 @@ env:
   REQUIRED_APPROVALS: 2
   # Number of generated cases to run per selected proptest.
   PROPTEST_CASES: 2500
-  TEST_ARCHIVE_FILE: "~/test_archive.tar.zst"
+  TEST_ARCHIVE_FILE: "./test_archive.tar.zst"
   DEBUG_BINARY_PATH: "./target/debug/"
   BTC_VERSION: "25.0"
 

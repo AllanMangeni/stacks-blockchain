@@ -64,7 +64,7 @@ runs:
         sudo apt-get update
         sudo apt-get install -y mold clang
 
-    # Restore the cargo cache (which we may have just built)
+    # Try to restore the cargo cache (it's OK if it's missing)
     - name: Restore Cargo Cache
       if: |
         inputs.action == 'create'

@@ -33,7 +33,7 @@ concurrency:
 
 # Env vars
 env:
-  TEST_ARCHIVE_FILE: "~/test_archive.tar.zst"
+  TEST_ARCHIVE_FILE: "./test_archive.tar.zst"
   DEBUG_BINARY_PATH: "./target/debug/"
 
 jobs:
