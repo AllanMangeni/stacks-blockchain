@@ -5172,7 +5172,7 @@ mod tests {
     /// - same as the previous, but the config file also contains empty [sections]
     ///
     /// This tests asserts that they all yield the same configuration (with the
-    /// exception of one document consequence of having a [miner] section).
+    /// exception of one documented consequence of having a [miner] section).
     ///
     /// This is necessary because the situations take different codepaths. In fact
     /// this test is a regression test for a bug where the default
