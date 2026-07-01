@@ -1,15 +1,15 @@
 name: Seed Caches
 
-##############################################################################################################################
+################################################################################################################################
 # GitHub caches are scoped to branches, with a fallback mechanism:
 #   1. A branch can only see caches created on that branch
 #   2. Failing that, a branch can opt-in to looking at the base branch cache
 #   3. Failing that, a branch can always access the default branch caches (`main` or `master`)
-# So we build caches on `develop` nightly, since our branches all target `develop` as base
+# So we build caches on `master` nightly, since our branches typically target `develop` as base (and can fallback to `master`)
 # That allows PR branches to re-use these caches, via `restore-keys` fallback in the actions/cache GitHub action
-# The cache cache is intentionally broad: it will restore what `develop` currently has.
+# The cache cache is intentionally broad: it will restore what `master` currently has.
 # If the branch has updated dependencies, cargo will notice the mismatched versions (or new deps) and build them on-the-fly.
-##############################################################################################################################
+################################################################################################################################
 
 on:
   schedule:
