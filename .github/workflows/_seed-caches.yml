@@ -13,9 +13,8 @@ name: Seed Caches
 
 on:
   schedule:
-    # Run at 12am Eastern Time every day
-    - cron: '0 0 * * *'
-      timezone: 'America/New_York'
+    # Run every 4 hours (at minute 0 of every 4th hour)
+    - cron: '0 */4 * * *'
   workflow_dispatch: # Allows manual triggering / seeding
 
 permissions:

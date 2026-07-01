@@ -99,7 +99,7 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
       with:
         name: "nextest-archive"
-        # Includes contents of debug-binary-path because they're needed for both unit tests and code coverage
+        # Exclude unncessary and large files, including .so files because we don't use cdylib in our codebase
         path: |
           ${{ inputs.archive-file }}
           ${{ inputs.debug-binary-path }}
