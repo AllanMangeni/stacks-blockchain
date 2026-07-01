@@ -211,6 +211,7 @@ jobs:
   ############################################################################
   setup-nextest-archive:
     name: "Setup: Nextest Archive Artifact"
+    runs-on: *shared_config
     needs:
       - check-changelog
       - check-rustfmt
