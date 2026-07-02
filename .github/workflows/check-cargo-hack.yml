@@ -91,10 +91,12 @@ jobs:
             -p clarity \
             -p clarity-types \
             -p stacks-common \
+            -p stacks-codec \
             --each-feature \
             --no-dev-deps \
             --exclude-features=default,rusqlite,ctrlc-handler,wasm-deterministic,testing \
-            --features=wasm-web
+            --features=wasm-web \
+            --target wasm32-unknown-unknown
 
       # Run cargo-hack for WASM Deterministic
       - name: Run cargo hack check (WASM Deterministic)
@@ -119,7 +121,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
           persist-credentials: false
 
-      # Setup the rust toolchain for specified target
+      # Setup the rust toolchain for specified target.
       # Pin to a specific nightly: an unpinned `nightly` tracks the latest build
       # and breaks the job whenever rustc tightens lints (e.g. unused imports).
       - name: Setup Rust Toolchain
