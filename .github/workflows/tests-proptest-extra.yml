@@ -224,7 +224,7 @@ jobs:
       - check-approvals
       - check-changes
       - setup-env
-      - setup-test-caches
+      - check-test-caches
     if: |
       needs.check-approvals.outputs.ready == 'true' &&
       needs.check-changes.outputs.found == 'true'

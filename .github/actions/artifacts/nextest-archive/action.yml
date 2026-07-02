@@ -6,15 +6,12 @@ inputs:
   action:
     description: "Type of operation (restore,create)"
     required: true
-    type: string
   archive-file:
     description: "The nextest archive file"
     required: true
-    type: string
   debug-binary-path:
     description: "Debug binary path"
     required: true
-    type: string
 
 # Set default env vars
 env:
@@ -64,7 +61,7 @@ runs:
         sudo apt-get update
         sudo apt-get install -y mold clang
 
-    # Try to restore the cargo cache (it's OK if it's missing)
+    # Restore the cargo cache
     - name: Restore Cargo Cache
       if: |
         inputs.action == 'create'
@@ -99,7 +96,6 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
       with:
         name: "nextest-archive"
-        # Exclude unncessary and large files, including .so files because we don't use cdylib in our codebase
         path: |
           ${{ inputs.archive-file }}
           ${{ inputs.debug-binary-path }}
@@ -110,7 +106,6 @@ runs:
           !${{ inputs.debug-binary-path }}/deps/**/*.d
           !${{ inputs.debug-binary-path }}/deps/**/*.rlib
           !${{ inputs.debug-binary-path }}/deps/**/*.rmeta
-          !${{ inputs.debug-binary-path }}/deps/**/*.so
         if-no-files-found: error
         retention-days: 1
         compression-level: 9 # 0 (none) - 9 (most)
