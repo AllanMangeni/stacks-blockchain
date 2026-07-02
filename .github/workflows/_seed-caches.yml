@@ -13,9 +13,12 @@ name: Seed Caches
 
 on:
   schedule:
-    # Run every 4 hours (at minute 0 of every 4th hour)
-    - cron: '0 */4 * * *'
+    # Run at 00:00 UTC daily
+    - cron: '0 0 * * *'
   workflow_dispatch: # Allows manual triggering / seeding
+  push:
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -30,12 +33,14 @@ concurrency:
 jobs:
   ############################################################################
   ### Create Reusable Caches for Tests
+  ###
+  ### Caches can only be created from `master`. This workflow runs only 
+  ### from `master` and thus will create re-usable caches successfully.
   ############################################################################
   setup-test-caches:
     name: "Create: Test Caches"
-    # Only execute if running in our core repo, the CRON will run against `master` which is intended
+    # Only execute if running in our core repo. The CRON schedule will run against `master` which is intended
     if: |
-      github.repository == 'stacks-network/stacks-core'
+      github.repository == 'stacks-network/stacks-core' &&
+      github.ref_name == 'master'
     uses: ./.github/workflows/setup-test-caches.yml
-    with:
-      create-if-missing: true

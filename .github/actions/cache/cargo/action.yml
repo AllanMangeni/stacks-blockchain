@@ -9,12 +9,12 @@ inputs:
     default: "check"
 
 outputs:
-  cache-hit:
-    description: "Cache Hit"
-    value: ${{ steps.check-cache.outputs.cache-hit }}
   cache-key:
     description: "Cache Key"
     value: ${{ steps.generate-keys.outputs.cargo-cache-key }}
+  cache-matched-key:
+    description: "Key of the cache that was checked or restored, it could either be the primary key on cache-hit or a partial/complete match of one of the restore keys."
+    value: ${{ steps.check-cache.outputs.cache-matched-key || steps.restore-cache.outputs.cache-matched-key }}
 
 runs:
   using: "composite"
@@ -39,14 +39,15 @@ runs:
           ~/.cargo/git/db/
           target/
         key: ${{ steps.generate-keys.outputs.cargo-cache-key }}
-        # Allows cache to "fallback" to base branch or `master`
-        restore-keys: ${{ steps.generate-keys.outputs.cargo-cache-key }}
+        # Allows cache to "fallback" to `master` generated cache, using a prefix. The most recently created cache will be selected.
+        restore-keys: ${{ steps.generate-keys.outputs.cargo-restore-key }}
 
     # Restore cache data
     - name: Restore Cache
       if: |
         inputs.action == 'restore'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: restore-cache
       with:
         path: |
           ~/.cargo/bin/
@@ -56,7 +57,7 @@ runs:
           target/
         key: ${{ steps.generate-keys.outputs.cargo-cache-key }}
         # Allows cache to "fallback" to base branch or `master`
-        restore-keys: ${{ steps.generate-keys.outputs.cargo-cache-key }}
+        restore-keys: ${{ steps.generate-keys.outputs.cargo-restore-key }}
         fail-on-cache-miss: true
 
     # Checkout the code

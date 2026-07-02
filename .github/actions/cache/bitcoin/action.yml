@@ -13,12 +13,12 @@ inputs:
     default: "25.0"
 
 outputs:
-  cache-hit:
-    description: "Cache Hit"
-    value: ${{ steps.check_cache.outputs.cache-hit }}
   cache-key:
     description: "Cache Key"
     value: ${{ steps.generate-keys.outputs.bitcoin-cache-key }}
+  cache-matched-key:
+    description: "Key of the cache that was checked or restored, it could either be the primary key on cache-hit or a partial/complete match of one of the restore keys."
+    value: ${{ steps.check-cache.outputs.cache-matched-key || steps.restore-cache.outputs.cache-matched-key }}
 
 runs:
   using: "composite"
@@ -35,24 +35,25 @@ runs:
       if: |
         inputs.action == 'check'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      id: check_cache
+      id: check-cache
       with:
         lookup-only: true
         path: ~/bitcoin
         key: ${{ steps.generate-keys.outputs.bitcoin-cache-key }}
-        # Allows cache to "fallback" to base branch or `master`
-        restore-keys: ${{ steps.generate-keys.outputs.bitcoin-cache-key }}
+        # Allows cache to "fallback" to `master` generated cache, using a prefix. The most recently created cache will be selected.
+        restore-keys: ${{ steps.generate-keys.outputs.bitcoin-restore-key }}
 
     # Restore cache data
     - name: Restore Cache
       if: |
         inputs.action == 'restore'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: restore-cache
       with:
         path: ~/bitcoin
         key: ${{ steps.generate-keys.outputs.bitcoin-cache-key }}
         # Allows cache to "fallback" to base branch or `master`
-        restore-keys: ${{ steps.generate-keys.outputs.bitcoin-cache-key }}
+        restore-keys: ${{ steps.generate-keys.outputs.bitcoin-restore-key }}
         fail-on-cache-miss: true
 
     # Install bitcoin binary on cache-miss

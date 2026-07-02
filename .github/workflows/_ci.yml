@@ -168,6 +168,22 @@ jobs:
         run: bash ./.github/scripts/check_release.sh
 
   ############################################################################
+  ### Check Reusable Test Caches
+  ###
+  ### Caches can only be created from `master`. The workflow will fail 
+  ### if caches are missing, with instructions on how to manually seed them.
+  ############################################################################
+  setup-test-caches:
+    name: "Check: Test Caches"
+    needs:
+      - check-changelog
+      - check-rustfmt
+      - setup-env
+    if: >-
+      needs.setup-env.outputs.job-should-run == 'true'
+    uses: ./.github/workflows/setup-test-caches.yml
+      
+  ############################################################################
   ### Cargo Hack Check
   ############################################################################
   check-cargo-hack:
@@ -176,6 +192,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-env
+      - setup-test-caches
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/check-cargo-hack.yml
@@ -189,24 +206,10 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-env
+      - setup-test-caches
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/check-constants.yml
-
-  ############################################################################
-  ### Check Reusable Test Caches
-  ############################################################################
-  setup-test-caches:
-    name: "Check: Test Caches"
-    needs:
-      - check-changelog
-      - check-rustfmt
-      - setup-env
-    if: >-
-      needs.setup-env.outputs.job-should-run == 'true'
-    uses: ./.github/workflows/setup-test-caches.yml
-    with:
-      create-if-missing: false # The workflow will fail if they are missing, with instructions on how to seed them
       
   ############################################################################
   ### Create Nextest Archive Artifact for Tests
@@ -370,6 +373,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - check-release
+      - setup-test-caches
       - tests-bitcoin
       - tests-epoch
       - tests-p2p
@@ -525,6 +529,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - check-release
+      - setup-test-caches
       - tests-bitcoin
       - tests-epoch
       - tests-p2p
