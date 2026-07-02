@@ -26,9 +26,6 @@ jobs:
   check-caches:
     name: Check Existing Caches
     runs-on: ubuntu-latest
-    outputs:
-      bitcoin-cache-hit: ${{ steps.bitcoin.outputs.cache-hit }}
-      cargo-cache-hit: ${{ steps.cargo.outputs.cache-hit }}
     steps:
       # Checkout the code
       #   - only .github is required for checking caches

@@ -13,7 +13,8 @@
 # It uses two gates: approval threshold first, then quick diff detection of
 # new proptest tests (tag based), to avoid expensive runs when not needed.
 #
-# Once the gates are passed, the test discovery strategy is:#   - HEAD: list tests from nextest archive (cache restore when available)
+# Once the gates are passed, the test discovery strategy is:#   
+#   - HEAD: list tests from nextest archive (cache restore when available)
 #   - BASE: compile/list tests in a temporary git worktree
 #   - New tests: tagged tests present in HEAD but not in BASE
 #
@@ -193,12 +194,17 @@ jobs:
           FILE="${{ env.TEST_ARCHIVE_FILE }}"
   
           echo "test_archive_file=${FILE/#\~/$HOME}" >> $GITHUB_OUTPUT
-          echo "debug_binary_path="${{ env.DEBUG_BINARY_PATH }}" >> $GITHUB_OUTPUT
+          echo "debug_binary_path=${{ env.DEBUG_BINARY_PATH }}" >> $GITHUB_OUTPUT
           echo "btc_version=${{ env.BTC_VERSION }}" >> $GITHUB_OUTPUT
 
-  # --- Setup reusable caches for tests ------------------------------------
-  setup-test-caches:
-    name: "Setup: Test Caches"
+  ############################################################################
+  ### Check Reusable Test Caches
+  ###
+  ### Caches can only be created from `master`. The workflow will fail 
+  ### if caches are missing, with instructions on how to manually seed them.
+  ############################################################################
+  check-test-caches:
+    name: "Check: Test Caches"
     needs:
       - check-approvals
       - check-changes
@@ -207,8 +213,6 @@ jobs:
       needs.check-approvals.outputs.ready == 'true' &&
       needs.check-changes.outputs.found == 'true'
     uses: ./.github/workflows/setup-test-caches.yml
-    with:
-      archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
 
   proptests-run:
     # NOTE: This job name is used as a required Status Check in branch
@@ -238,6 +242,14 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
+     
+     # Create Nextest archive artifact
+      - name: Create Nextest Archive Artifact
+        uses: ./.github/actions/artifacts/nextest-archive
+        with:
+          action: create
+          archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
+          debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
      
       # Setup rust toolchain with llvm-tools-preview
       - name: Setup Rust Toolchain
@@ -276,7 +288,7 @@ jobs:
         uses: ./.github/actions/artifacts/nextest-archive
         with:
           action: restore
-          archive-file: ${{ needs.setup-env.outputs.archive-file }}
+          archive-file: ${{ needs.setup-env.outputs.test-archive-file }}
           debug-binary-path: ${{ needs.setup-env.outputs.debug-binary-path }}
 
       ############################################################################

@@ -173,7 +173,7 @@ jobs:
   ### Caches can only be created from `master`. The workflow will fail 
   ### if caches are missing, with instructions on how to manually seed them.
   ############################################################################
-  setup-test-caches:
+  check-test-caches:
     name: "Check: Test Caches"
     needs:
       - check-changelog
@@ -192,7 +192,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-env
-      - setup-test-caches
+      - check-test-caches
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/check-cargo-hack.yml
@@ -206,7 +206,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-env
-      - setup-test-caches
+      - check-test-caches
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     uses: ./.github/workflows/check-constants.yml
@@ -221,7 +221,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - setup-env
-      - setup-test-caches
+      - check-test-caches
     if: >-
       needs.setup-env.outputs.job-should-run == 'true'
     steps:
@@ -250,7 +250,7 @@ jobs:
     needs:
       - check-changelog
       - check-rustfmt
-      - setup-test-caches
+      - check-test-caches
       - create-nextest-archive
       - setup-env
     if: >-
@@ -268,7 +268,7 @@ jobs:
     needs:
       - check-changelog
       - check-rustfmt
-      - setup-test-caches
+      - check-test-caches
       - create-nextest-archive
       - setup-env
     if: >-
@@ -286,7 +286,7 @@ jobs:
     needs:
       - check-changelog
       - check-rustfmt
-      - setup-test-caches
+      - check-test-caches
       - create-nextest-archive
       - setup-env
     if: >-
@@ -304,7 +304,7 @@ jobs:
     needs:
       - check-changelog
       - check-rustfmt
-      - setup-test-caches
+      - check-test-caches
       - create-nextest-archive
       - setup-env
     if: >-
@@ -323,7 +323,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - check-release
-      - setup-test-caches
+      - check-test-caches
       - create-nextest-archive
       - setup-env
     if: >-
@@ -373,7 +373,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - check-release
-      - setup-test-caches
+      - check-test-caches
       - tests-bitcoin
       - tests-epoch
       - tests-p2p
@@ -529,7 +529,7 @@ jobs:
       - check-changelog
       - check-rustfmt
       - check-release
-      - setup-test-caches
+      - check-test-caches
       - tests-bitcoin
       - tests-epoch
       - tests-p2p
