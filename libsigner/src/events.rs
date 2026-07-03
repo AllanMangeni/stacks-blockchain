@@ -775,7 +775,10 @@ mod tests {
         let canonical = [
             (BlockResponse, MessageSlotID::BlockResponse.to_u32()),
             (MockSignature, MessageSlotID::BlockResponse.to_u32()),
-            (StateMachineUpdate, MessageSlotID::StateMachineUpdate.to_u32()),
+            (
+                StateMachineUpdate,
+                MessageSlotID::StateMachineUpdate.to_u32(),
+            ),
             (BlockPreCommit, MessageSlotID::BlockPreCommit.to_u32()),
         ];
         for (prefix, lane) in canonical {
