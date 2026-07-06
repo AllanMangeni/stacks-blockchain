@@ -34,4 +34,4 @@ jobs:
           pr-inactive-days: 14
           pr-comment: "Closed PR has been locked after 14 days of inactivity."
           discussion-inactive-days: 7
-          discussion-comment: "Closed Discussion has been locked after 14 days of inactivity."
+          discussion-comment: "Closed Discussion has been locked after 7 days of inactivity."
