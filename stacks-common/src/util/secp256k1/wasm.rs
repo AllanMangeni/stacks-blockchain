@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use ::libsecp256k1::curve::Scalar;
 pub use ::libsecp256k1::Error;
 use ::libsecp256k1::{
     self, PublicKey as LibSecp256k1PublicKey, RecoveryId as LibSecp256k1RecoveryId,
