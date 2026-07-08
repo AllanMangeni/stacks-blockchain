@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::mem::replace;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use clarity_types::representations::ClarityName;
 use serde::Serialize;
@@ -44,6 +44,7 @@ use crate::vm::errors::{
 };
 use crate::vm::events::*;
 use crate::vm::representations::SymbolicExpression;
+use crate::vm::time_tracker::TimeTracker;
 use crate::vm::types::signatures::FunctionSignature;
 use crate::vm::types::{
     AssetIdentifier, BuffData, CallableData, PrincipalData, QualifiedContractIdentifier,
@@ -265,17 +266,6 @@ pub struct EventBatch {
     pub events: Vec<StacksTransactionEvent>,
 }
 
-/** ExecutionTimeTracker keeps track of how much time a contract call is taking.
-   It is checked at every eval call.
-*/
-pub enum ExecutionTimeTracker {
-    NoTracking,
-    MaxTime {
-        start_time: Instant,
-        max_duration: Duration,
-    },
-}
-
 /// Per-`eval` abort check. This operates alongside the execution time
 /// tracker.
 ///
@@ -346,7 +336,7 @@ pub struct GlobalContext<'a, 'hooks> {
     /// This is the chain ID of the transaction
     pub chain_id: u32,
     pub eval_hooks: Option<Vec<&'hooks mut dyn EvalHook>>,
-    pub execution_time_tracker: ExecutionTimeTracker,
+    pub execution_time_tracker: TimeTracker,
     /// Callback checked at every `eval` call. When `check()` returns
     /// `Err(reason)`, execution is aborted with
     /// `VmExecutionError::RuntimeCheck(AbortedByExecutionHook)`. The
@@ -557,6 +547,16 @@ impl AssetMap {
         for (principal, stx_burn_amount) in other.burn_map.drain() {
             let next_amount = self.get_next_stx_burn_amount(&principal, stx_burn_amount)?;
             stx_burn_to_add.push((principal.clone(), next_amount));
+        }
+
+        // Reject any transaction that would overwrite an
+        // existing asset-map stacking entry for `sender`.
+        for principal in other.stacking_map.keys() {
+            if self.stacking_map.contains_key(principal) {
+                return Err(VmExecutionError::from(
+                    RuntimeCheckErrorKind::PoxStxAssetMapOverwrite,
+                ));
+            }
         }
 
         // After this point, this function will not fail.
@@ -1768,7 +1768,7 @@ impl<'a, 'hooks> GlobalContext<'a, 'hooks> {
             epoch_id,
             chain_id,
             eval_hooks: None,
-            execution_time_tracker: ExecutionTimeTracker::NoTracking,
+            execution_time_tracker: TimeTracker::unlimited(),
             abort_callback: AbortCallback::None,
         }
     }
@@ -1778,10 +1778,11 @@ impl<'a, 'hooks> GlobalContext<'a, 'hooks> {
     }
 
     pub fn set_max_execution_time(&mut self, max_execution_time: Duration) {
-        self.execution_time_tracker = ExecutionTimeTracker::MaxTime {
-            start_time: Instant::now(),
-            max_duration: max_execution_time,
-        }
+        self.execution_time_tracker = TimeTracker::from_max_duration(max_execution_time);
+    }
+
+    pub fn set_abort_callback(&mut self, callback: AbortCallback) {
+        self.abort_callback = callback;
     }
 
     fn get_asset_map(&mut self) -> Result<&mut AssetMap, VmExecutionError> {

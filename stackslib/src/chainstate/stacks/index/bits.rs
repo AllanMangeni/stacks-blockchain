@@ -20,12 +20,14 @@ use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use sha2::{Digest, Sha512_256 as TrieHasher};
 
 use crate::chainstate::stacks::index::node::{
-    clear_compressed, clear_ctrl_bits, is_compressed, ptrs_fmt, ConsensusSerializable, TrieNode,
-    TrieNode16, TrieNode256, TrieNode4, TrieNode48, TrieNodeID, TrieNodePatch, TrieNodeType,
-    TriePtr,
+    clear_compressed, clear_ctrl_bits, is_backptr, is_compressed, ptrs_fmt, ConsensusSerializable,
+    TrieNode, TrieNode16, TrieNode256, TrieNode4, TrieNode48, TrieNodeID, TrieNodePatch,
+    TrieNodeType, TriePtr,
 };
 use crate::chainstate::stacks::index::storage::TrieStorageConnection;
-use crate::chainstate::stacks::index::{BlockMap, Error, MarfTrieId, TrieLeaf};
+use crate::chainstate::stacks::index::{
+    BlockMap, Error, MarfTrieId, TrieLeaf, MARF_VALUE_ENCODED_SIZE,
+};
 use crate::codec::StacksMessageCodec;
 use crate::types::chainstate::{TrieHash, TRIEHASH_ENCODED_SIZE};
 use crate::util::hash::to_hex;
@@ -105,6 +107,13 @@ fn node_id_to_ptr_count(node_id: u8) -> usize {
 pub fn get_ptrs_byte_len(ptrs: &[TriePtr]) -> usize {
     let node_id_len = 1;
     node_id_len + ptrs.iter().map(TriePtr::encoded_size).sum::<usize>()
+}
+
+/// Returns `true` when a pointer is an inline child: non-empty and not a
+/// backpointer to an ancestor block.
+#[inline]
+pub fn is_inline_child_ptr(ptr: &TriePtr) -> bool {
+    !ptr.is_empty() && !is_backptr(ptr.id())
 }
 
 /// Helper to determine a sparse TriePtr list's bitmap size, given the node ID's numeric value.
@@ -780,6 +789,37 @@ pub fn get_node_byte_len(node: &TrieNodeType) -> usize {
     hash_len + node_byte_len
 }
 
+/// Upper bound on a node's on-disk size (hash + body) for node type `id`,
+/// used to size best-effort prefetch reads without first reading the node.
+///
+/// `u64_ptr_offsets` selects the child-pointer offset width: callers pass
+/// `true` for a squashed source (a single trie can exceed 4 GiB) and
+/// `false` for archival. Computes the uncompressed size.
+/// Errors on `Empty`/`Patch`, which the squash DFS never prefetches.
+pub fn get_node_max_byte_len(id: u8, u64_ptr_offsets: bool) -> Result<usize, Error> {
+    // A width-correct template pointer lets `get_ptrs_byte_len` compute the
+    // body without re-deriving the per-pointer size here.
+    let ptr = if u64_ptr_offsets {
+        TriePtr::widest_encoded()
+    } else {
+        TriePtr::default()
+    };
+    let path_max = get_path_byte_len(&[0u8; TRIEHASH_ENCODED_SIZE]);
+    let body = match TrieNodeID::from_u8(clear_ctrl_bits(id)) {
+        Some(TrieNodeID::Leaf) => 1 + path_max + MARF_VALUE_ENCODED_SIZE as usize,
+        Some(TrieNodeID::Node4) => get_ptrs_byte_len(&[ptr; 4]) + path_max,
+        Some(TrieNodeID::Node16) => get_ptrs_byte_len(&[ptr; 16]) + path_max,
+        Some(TrieNodeID::Node48) => get_ptrs_byte_len(&[ptr; 48]) + 256 + path_max,
+        Some(TrieNodeID::Node256) => get_ptrs_byte_len(&[ptr; 256]) + path_max,
+        _ => {
+            return Err(Error::CorruptionError(format!(
+                "get_node_max_byte_len: no node body for id {id:x}"
+            )))
+        }
+    };
+    Ok(TRIEHASH_ENCODED_SIZE + body)
+}
+
 /// calculate how many bytes a node will be when serialized, including its hash, using a compressed
 /// representation.  This includes considering whether or not the compressed representation will be
 /// dense or sparse.
@@ -789,6 +829,53 @@ pub fn get_node_byte_len_compressed(node: &TrieNodeType) -> usize {
     hash_len + node_byte_len
 }
 
+/// Compute the worst-case on-disk size for a root node that is reserved before
+/// its descendants are written.
+///
+/// The base size is calculated with the root's current child pointer values.
+/// Each inline child pointer may later widen from u32 to u64 once its final
+/// file offset is known.
+pub fn reserved_root_size(base_len: usize, ptrs: &[TriePtr]) -> Result<u64, Error> {
+    let base_len = base_len as u64;
+    let inline_count = ptrs.iter().filter(|p| is_inline_child_ptr(p)).count() as u64;
+    let inline_ptr_growth = inline_count.checked_mul(4).ok_or(Error::OverflowError)?;
+
+    base_len
+        .checked_add(inline_ptr_growth)
+        .ok_or(Error::OverflowError)
+}
+
+/// Rewrite inline child pointers from in-memory node indices to blob-local
+/// byte offsets. Backpointers and empty pointers are left untouched.
+pub fn resolve_inline_child_offsets(
+    ptrs: &mut [TriePtr],
+    file_offsets: &[u64],
+) -> Result<(), Error> {
+    for ptr in ptrs.iter_mut() {
+        if !is_inline_child_ptr(ptr) {
+            continue;
+        }
+
+        let child_idx = ptr.try_ptr_into_usize()?;
+        let Some(&offset) = file_offsets.get(child_idx) else {
+            return Err(Error::CorruptionError(format!(
+                "inline child index {child_idx} out of bounds"
+            )));
+        };
+        // 0 is the sentinel for "not yet placed": valid offsets are always
+        // past the blob header.
+        if offset == 0 {
+            return Err(Error::CorruptionError(format!(
+                "inline child index {child_idx} has not been written"
+            )));
+        }
+
+        ptr.ptr = offset;
+    }
+
+    Ok(())
+}
+
 /// Write all the bytes for a node, including its hash, to the given Writeable object.
 /// The list of child pointers will NOT be compressed.
 /// Returns Ok(nw) on success, where `nw` is the number of bytes written.
@@ -796,7 +883,7 @@ pub fn get_node_byte_len_compressed(node: &TrieNodeType) -> usize {
 pub fn write_nodetype_bytes<F: Write + Seek>(
     f: &mut F,
     node: &TrieNodeType,
-    hash: TrieHash,
+    hash: &TrieHash,
 ) -> Result<u64, Error> {
     let start = f.stream_position().map_err(Error::IOError)?;
     f.write_all(hash.as_bytes())?;

@@ -17,6 +17,7 @@
 use std::io::Cursor;
 
 use super::*;
+use crate::chainstate::stacks::index::bits::{get_node_byte_len, get_node_max_byte_len};
 use crate::chainstate::stacks::index::*;
 
 #[test]
@@ -5136,6 +5137,46 @@ fn trieptr_compressed_roundtrip_non_backptr() {
 }
 
 #[test]
+fn trieptr_compressed_roundtrip_inline_back_block_payload_u32() {
+    let mut ptr = TriePtr::new(TrieNodeID::Node16 as u8, 0x21, 777);
+    ptr.back_block = 42;
+
+    let mut bytes = vec![];
+    ptr.write_bytes_compressed(&mut bytes).unwrap();
+
+    assert_eq!(10, bytes.len());
+    assert_eq!(
+        set_compressed(set_inline_back_block(TrieNodeID::Node16 as u8)),
+        bytes[0]
+    );
+    assert_eq!(ptr, TriePtr::from_bytes_compressed(&bytes));
+    assert_eq!(
+        ptr,
+        TriePtr::read_bytes_compressed(&mut Cursor::new(&bytes)).unwrap()
+    );
+}
+
+#[test]
+fn trieptr_compressed_roundtrip_inline_back_block_payload_u64() {
+    let mut ptr = TriePtr::new(TrieNodeID::Node16 as u8, 0x22, u64::from(u32::MAX) + 9);
+    ptr.back_block = 314;
+
+    let mut bytes = vec![];
+    ptr.write_bytes_compressed(&mut bytes).unwrap();
+
+    assert_eq!(14, bytes.len());
+    assert_eq!(
+        set_compressed(set_inline_back_block(set_u64_ptr(TrieNodeID::Node16 as u8))),
+        bytes[0]
+    );
+    assert_eq!(ptr, TriePtr::from_bytes_compressed(&bytes));
+    assert_eq!(
+        ptr,
+        TriePtr::read_bytes_compressed(&mut Cursor::new(&bytes)).unwrap()
+    );
+}
+
+#[test]
 fn trieptr_compressed_roundtrip_backptr() {
     let ptr = TriePtr::new_backptr(
         TrieNodeID::Node48 as u8,
@@ -5296,4 +5337,108 @@ fn ptrs_from_bytes_compressed_dense_mixed_width() {
     );
     assert_eq!(expected, decoded);
     assert_eq!(expected_consumed, cursor_pos);
+}
+
+#[test]
+fn test_node_copy_update_ptrs_preserves_nonzero_back_block() {
+    use crate::chainstate::stacks::index::node::node_copy_update_ptrs;
+
+    // Inline pointer with back_block = 0 (normal archival case) - should be overwritten
+    let mut ptrs = [TriePtr::new(TrieNodeID::Node4 as u8, 0x10, 100)];
+    assert_eq!(ptrs[0].back_block, 0);
+    node_copy_update_ptrs(&mut ptrs, 42);
+    assert!(is_backptr(ptrs[0].id()));
+    assert_eq!(ptrs[0].back_block, 42);
+    assert_eq!(ptrs[0].chr(), 0x10);
+    assert_eq!(ptrs[0].ptr(), 100);
+
+    // Inline pointer with back_block != 0 (squash annotation) - should be preserved
+    let mut ptrs = [TriePtr {
+        id: TrieNodeID::Node4 as u8,
+        chr: 0x20,
+        ptr: 200,
+        back_block: 99,
+    }];
+    node_copy_update_ptrs(&mut ptrs, 42);
+    assert!(is_backptr(ptrs[0].id()));
+    assert_eq!(
+        ptrs[0].back_block, 99,
+        "squash annotation must be preserved"
+    );
+    assert_eq!(ptrs[0].chr(), 0x20);
+    assert_eq!(ptrs[0].ptr(), 200);
+
+    // Empty pointer - should be untouched
+    let mut ptrs = [TriePtr::default()];
+    node_copy_update_ptrs(&mut ptrs, 42);
+    assert_eq!(ptrs[0], TriePtr::default());
+
+    // Already a backptr - should be skipped entirely
+    let orig = TriePtr {
+        id: set_backptr(TrieNodeID::Node16 as u8),
+        chr: 0x30,
+        ptr: 300,
+        back_block: 7,
+    };
+    let mut ptrs = [orig];
+    node_copy_update_ptrs(&mut ptrs, 42);
+    assert_eq!(ptrs[0], orig, "existing backptr must not be touched");
+}
+
+/// `get_node_max_byte_len` must bound the real serialized size of each node
+/// type and stay in step with the wire format (guards the mirrored Node48
+/// index array and leaf `MARFValue`). Archival (u32) sizing matches a
+/// freshly built node exactly; squashed (u64) sizing widens each pointer.
+#[test]
+fn test_get_node_max_byte_len() {
+    let path = [0u8; 32]; // longest a MARF path can be
+    let cases: Vec<(u8, usize, TrieNodeType)> = vec![
+        (
+            TrieNodeID::Leaf as u8,
+            0,
+            TrieNodeType::Leaf(TrieLeaf::new(&path, &[0u8; 40])),
+        ),
+        (
+            TrieNodeID::Node4 as u8,
+            4,
+            TrieNodeType::Node4(TrieNode4::new(&path)),
+        ),
+        (
+            TrieNodeID::Node16 as u8,
+            16,
+            TrieNodeType::Node16(TrieNode16::new(&path)),
+        ),
+        (
+            TrieNodeID::Node48 as u8,
+            48,
+            TrieNodeType::Node48(Box::new(TrieNode48::new(&path))),
+        ),
+        (
+            TrieNodeID::Node256 as u8,
+            256,
+            TrieNodeType::Node256(Box::new(TrieNode256::new(&path))),
+        ),
+    ];
+    // Bytes one child pointer grows when its offset widens from u32 to u64.
+    let ptr_widen = TriePtr::widest_encoded().encoded_size() - TriePtr::default().encoded_size();
+
+    for (id, n_ptrs, node) in cases {
+        // u32-width sizing must equal a freshly built node's serialized size
+        // (default pointers, longest path): pins the helper to the wire format.
+        assert_eq!(
+            get_node_max_byte_len(id, false).unwrap(),
+            get_node_byte_len(&node),
+            "u32 size mismatch for id {id:#x}"
+        );
+        // u64-width sizing widens every child pointer.
+        assert_eq!(
+            get_node_max_byte_len(id, true).unwrap(),
+            get_node_max_byte_len(id, false).unwrap() + n_ptrs * ptr_widen,
+            "u64 widening mismatch for id {id:#x}"
+        );
+    }
+
+    // Node types the prefetch path never sizes.
+    assert!(get_node_max_byte_len(TrieNodeID::Empty as u8, false).is_err());
+    assert!(get_node_max_byte_len(TrieNodeID::Patch as u8, false).is_err());
 }
