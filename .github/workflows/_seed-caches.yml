@@ -39,8 +39,6 @@ jobs:
   ############################################################################
   setup-test-caches:
     name: "Create: Test Caches"
-    # Only execute if running in our core repo. The CRON schedule will run against `master` which is intended
-    if: |
-      github.repository == 'stacks-network/stacks-core' &&
-      github.ref_name == 'master'
+    # Only execute on the default branch.
+    if: github.ref_name == 'master'
     uses: ./.github/workflows/setup-test-caches.yml
